@@ -1,5 +1,9 @@
-// ponytail: shim localStorage p/ preview no browser — vira cliente HTTP na fase 2 (web)
+// 3 modos: Electron (IPC window.ray) · web (API HTTP, build --mode web) · fallback localStorage (preview dev).
+export const isWeb = import.meta.env.MODE === 'web'
+export const sceneMeta = {} // id → { readOnly, viewId, name } (só web)
+
 const ls = {
+  // ponytail: shim localStorage p/ preview no browser
   _index() { return JSON.parse(localStorage.rayIndex ?? '{"last":null,"projects":{}}') },
   _write(i) { localStorage.rayIndex = JSON.stringify(i) },
   async list() {
@@ -37,4 +41,34 @@ const ls = {
   onFlush() {},
   flushed() {},
 }
-export const ray = window.ray ?? ls
+
+const web = {
+  user: () => localStorage.rayUser,
+  async list() { return fetch(`/api/u/${this.user()}/scenes`).then((r) => r.json()) },
+  async create(name) {
+    const { id, viewId } = await fetch(`/api/u/${this.user()}/scenes`, { method: 'POST', body: JSON.stringify({ name }) }).then((r) => r.json())
+    sceneMeta[id] = { readOnly: false, viewId, name }
+    return id
+  },
+  async load(id) {
+    const r = await fetch(`/api/scene/${id}`)
+    if (!r.ok) return null
+    const d = await r.json()
+    sceneMeta[id] = { readOnly: d.readOnly, viewId: d.viewId, name: d.name }
+    return JSON.stringify(d.scene)
+  },
+  async save(id, json) { await fetch(`/api/scene/${id}`, { method: 'PUT', body: json }) },
+  async rename(id, name) { await fetch(`/api/scene/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }) },
+  async remove(id) { await fetch(`/api/scene/${id}`, { method: 'DELETE' }) },
+  async last() { return localStorage['rayLast:' + this.user()] ?? null },
+  async setLast(id) {
+    if (id.startsWith('v-')) { history.replaceState(null, '', '/v/' + id); return } // link view: não vira "último"
+    if (this.user()) localStorage['rayLast:' + this.user()] = id
+    history.replaceState(null, '', '/d/' + id)
+  },
+  async openFolder() {},
+  onFlush() {},
+  flushed() {},
+}
+
+export const ray = window.ray ?? (isWeb ? web : ls)

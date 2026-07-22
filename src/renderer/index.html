@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Excalidraw Ray</title>
-  <script>window.EXCALIDRAW_ASSET_PATH = './'</script>
+  <script>window.EXCALIDRAW_ASSET_PATH = location.protocol === 'file:' ? './' : '/'</script>
   <style>html, body, #root { height: 100%; margin: 0 } body { background: #121212 }</style>
 </head>
 <body>

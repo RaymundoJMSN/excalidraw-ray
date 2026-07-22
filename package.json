@@ -7,7 +7,9 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "check": "node tests/store.check.mjs",
-    "dist": "electron-vite build && electron-builder --win"
+    "dist": "electron-vite build && electron-builder --win",
+    "build:web": "vite build --config vite.config.web.mjs --mode web",
+    "server": "node server/server.mjs"
   },
   "repository": {
     "type": "git",
