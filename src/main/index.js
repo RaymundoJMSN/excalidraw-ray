@@ -4,6 +4,9 @@ import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 import * as store from './store'
 
+if (process.env.RAY_TEST_DIR) { // instância isolada p/ testes: não briga com o app instalado nem toca nos projetos reais
+  app.setPath('userData', path.join(process.env.RAY_TEST_DIR, 'userData'))
+}
 if (!app.requestSingleInstanceLock()) app.quit() // duas instâncias = autosave corrompido
 
 const winStateFile = () => path.join(app.getPath('userData'), 'window-state.json')
@@ -19,10 +22,6 @@ function createWindow() {
   })
   if (s.maximized ?? true) win.maximize()
   win.once('ready-to-show', () => win.show())
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/.test(url)) shell.openExternal(url) // links (bibliotecas, ajuda) abrem no navegador de verdade
-    return { action: 'deny' }
-  })
   win.on('close', (e) => {
     try { fs.writeFileSync(winStateFile(), JSON.stringify({ ...win.getNormalBounds(), maximized: win.isMaximized() })) } catch {}
     if (!flushed) { // dá 1.5s pro renderer salvar o autosave pendente
@@ -41,6 +40,38 @@ function createWindow() {
   else win.loadFile(path.join(__dirname, '../renderer/index.html'))
   return win
 }
+
+// ---- site de bibliotecas: abre em janela do app; o "Add to Excalidraw" (referrer#addLibrary=<url>,
+// via navegação OU target=_blank) é interceptado aqui e entregue ao renderer principal.
+let mainWin = null
+
+function handleAddLibrary(url) {
+  const m = url.match(/#addLibrary=([^&]+)/)
+  if (!m) return false
+  ;(async () => {
+    try {
+      const libUrl = decodeURIComponent(m[1])
+      if (!/^https:\/\/.+\.excalidrawlib$/.test(libUrl)) return
+      const r = await fetch(libUrl, { headers: { 'User-Agent': 'excalidraw-ray' } })
+      if (r.ok) mainWin?.webContents.send('add-library', await r.text())
+    } catch (err) { console.log('[lib] erro', err) }
+  })()
+  return true
+}
+
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (handleAddLibrary(url)) return { action: 'deny' }
+    if (url.startsWith('https://libraries.excalidraw.com')) {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 1100, height: 800, autoHideMenuBar: true, backgroundColor: '#121212' } }
+    }
+    if (/^https?:/.test(url)) shell.openExternal(url) // demais links (ajuda etc) vão pro navegador
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (e, url) => {
+    if (handleAddLibrary(url)) e.preventDefault() // janela de bibliotecas fica aberta pra adicionar mais
+  })
+})
 
 // ---- auto-update: consulta a release mais nova no GitHub; botão verde no app baixa e roda o Setup
 const REPO = 'RaymundoJMSN/excalidraw-ray'
@@ -80,7 +111,7 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(() => {
-  store.init({ dir: path.join(app.getPath('documents'), 'ExcalidrawRay'), trash: (f) => shell.trashItem(f) })
+  store.init({ dir: process.env.RAY_TEST_DIR ? path.join(process.env.RAY_TEST_DIR, 'docs') : path.join(app.getPath('documents'), 'ExcalidrawRay'), trash: (f) => shell.trashItem(f) })
   ipcMain.handle('projects:list', () => store.list())
   ipcMain.handle('projects:create', (_e, name) => store.create(name))
   ipcMain.handle('projects:load', (_e, id) => store.load(id))
@@ -93,7 +124,7 @@ app.whenReady().then(() => {
   ipcMain.handle('projects:setLast', (_e, id) => store.setLast(id))
   ipcMain.handle('projects:openFolder', () => shell.openPath(store.dir()))
   ipcMain.handle('update:run', () => runUpdate())
-  const win = createWindow()
-  checkUpdate(win)
+  mainWin = createWindow()
+  checkUpdate(mainWin)
 })
 app.on('window-all-closed', () => app.quit())

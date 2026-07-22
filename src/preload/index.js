@@ -14,5 +14,6 @@ contextBridge.exposeInMainWorld('ray', {
   onFlush: (cb) => ipcRenderer.on('flush', () => cb()),
   flushed: () => ipcRenderer.send('flushed'),
   onUpdate: (cb) => ipcRenderer.on('update-available', (_e, v) => cb(v)),
+  onAddLibrary: (cb) => ipcRenderer.on('add-library', (_e, json) => cb(json)),
   runUpdate: () => ipcRenderer.invoke('update:run'),
 })

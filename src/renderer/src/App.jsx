@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob, useHandleLibrary } from '@excalidraw/excalidraw'
+import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob, useHandleLibrary, loadLibraryFromBlob } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { ray, isWeb, sceneMeta } from './storage'
 import { IconNew, IconProjects, IconFolderOpen, IconShare } from './icons'
@@ -85,6 +85,15 @@ export default function App() {
     })()
     ray.onFlush(async () => { await flush(); ray.flushed() })
     window.ray?.onUpdate?.((v) => setUpdateVersion(v))
+    window.ray?.onAddLibrary?.(async (json) => { // "Add to Excalidraw" vindo da janela de bibliotecas (desktop)
+      try {
+        const items = await loadLibraryFromBlob(new Blob([json]))
+        await apiRef.current?.updateLibrary({ libraryItems: items, merge: true, openLibraryMenu: true, defaultStatus: 'published' })
+        apiRef.current?.setToast({ message: 'Biblioteca adicionada!', duration: 2500 })
+      } catch {
+        apiRef.current?.setToast({ message: 'Não consegui adicionar essa biblioteca.', closable: true })
+      }
+    })
     return instalarTraducoes()
   }, [user])
 
