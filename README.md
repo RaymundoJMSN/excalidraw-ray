@@ -22,6 +22,19 @@ npm run dev        # Vite + Electron com hot reload
 npm run dist       # gera instalador NSIS em dist-electron/
 ```
 
-## Fase 2 (planejado)
+## Web / nuvem (fase 2 — no ar)
 
-Servidor `draw.raynathus.com.br`: cenas na nuvem, compartilhamento com direitos view/edit, links read-only e embeds. Ver `docs/plans/`.
+Mesmo app buildado pra web (`npm run build:web`) + `server/server.mjs` (Node puro, porta 8050,
+systemd `excalidraw-ray`, devilsworks) = `draw.raynathus.com.br`:
+
+- Login = escolher nome (localStorage, sem senha). Cenas ilimitadas por usuário, salvas no servidor
+  (escrita atômica, backup diário 7 dias).
+- **Compartilhar** (menu): link de edição `/d/<id>`, link só-visualização `/v/<viewId>` e snippet
+  `<iframe>` pra embed. Quem tem o link acessa (capability); viewId nunca escreve (403).
+- Visitante com link não precisa de login; raiz `/` pede login.
+- Sem colaboração ao vivo (edição simultânea = last-write-wins).
+
+Deploy: `deploy/deploy.ps1`. Self-check: `node server/server.mjs --check`.
+
+**Pendente (manual):** criar registro A `draw` → `147.15.30.202` no registrador; depois
+`ssh devilsworks 'sudo certbot --nginx -d draw.raynathus.com.br --redirect'`.
