@@ -1,13 +1,16 @@
 {
   "name": "excalidraw-ray",
   "version": "1.0.0",
-  "description": "Versão desktop instalável do [Excalidraw](https://github.com/excalidraw/excalidraw) (Windows), com:",
-  "main": "index.js",
+  "description": "Excalidraw desktop com autosave e multi-projetos",
+  "main": "./out/main/index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "check": "node tests/store.check.mjs",
+    "dist": "electron-vite build && electron-builder --win"
   },
   "repository": {
     "type": "git",
@@ -16,23 +19,19 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/RaymundoJMSN/excalidraw-ray/issues"
   },
   "homepage": "https://github.com/RaymundoJMSN/excalidraw-ray#readme",
-  "dependencies": {
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^4.0.1",
+    "vite": "^7.3.6",
     "@excalidraw/excalidraw": "^0.18.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^6.0.4",
-    "concurrently": "^10.0.3",
-    "cross-env": "^10.1.0",
-    "electron": "^43.2.0",
-    "electron-builder": "^26.15.3",
-    "vite": "^8.1.5",
-    "wait-on": "^9.1.0"
-  }
+  "productName": "Excalidraw Ray"
 }
