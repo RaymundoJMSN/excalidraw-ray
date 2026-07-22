@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 
 let DIR, PROJ, STATE_FILE, trashFn
+const queues = new Map() // id → promise chain: serializa saves concorrentes do mesmo projeto
 
 export function init({ dir, trash }) {
   DIR = dir
@@ -21,6 +22,7 @@ function writeState(s) {
   fs.renameSync(STATE_FILE + '.tmp', STATE_FILE)
 }
 const sceneFile = (id) => path.join(PROJ, id + '.excalidraw')
+const thumbFile = (id) => path.join(PROJ, id + '.thumb')
 
 const EMPTY = JSON.stringify({ type: 'excalidraw', version: 2, source: 'excalidraw-ray', elements: [], appState: { theme: 'dark' }, files: {} })
 
@@ -47,12 +49,26 @@ export function load(id) {
   try { return fs.readFileSync(sceneFile(id), 'utf8') } catch { return null }
 }
 
-export async function save(id, json) {
+export function save(id, json) {
   JSON.parse(json) // valida antes de escrever — json inválido nunca corrompe o arquivo
+  const next = (queues.get(id) ?? Promise.resolve()).then(() => doSave(id, json))
+  queues.set(id, next.catch(() => {}))
+  return next
+}
+
+async function doSave(id, json) {
   const f = sceneFile(id)
   if (fs.existsSync(f)) await fsp.copyFile(f, f + '.bak')
-  await fsp.writeFile(f + '.tmp', json)
-  await fsp.rename(f + '.tmp', f)
+  const tmp = f + '.' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '.tmp'
+  await fsp.writeFile(tmp, json)
+  await fsp.rename(tmp, f) // escrita atômica
+}
+
+export function saveThumb(id, dataURL) {
+  try { fs.writeFileSync(thumbFile(id), String(dataURL)) } catch {}
+}
+export function thumb(id) {
+  try { return fs.readFileSync(thumbFile(id), 'utf8') } catch { return null }
 }
 
 export function rename(id, name) {
@@ -65,7 +81,9 @@ export async function remove(id) {
   delete s.projects[id]
   if (s.last === id) s.last = Object.keys(s.projects)[0] ?? null
   writeState(s)
-  for (const f of [sceneFile(id), sceneFile(id) + '.bak']) if (fs.existsSync(f)) await trashFn(f)
+  for (const f of [sceneFile(id), sceneFile(id) + '.bak', thumbFile(id)]) {
+    if (fs.existsSync(f)) { try { await trashFn(f) } catch { try { await fsp.rm(f) } catch {} } }
+  }
 }
 
 export function getLast() { return readState().last }

@@ -19,8 +19,10 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 const ID = /^[a-zA-Z0-9-]{8,40}$/
 const USER = /^[a-z0-9-]{1,30}$/
 
+const MAX_SCENES = 300 // por usuário — trava DoS de criação em loop
 const idxFile = () => path.join(DATA, 'index.json')
 const sceneFile = (id) => path.join(DATA, 'scenes', id + '.excalidraw')
+const thumbFile = (id) => path.join(DATA, 'scenes', id + '.thumb')
 
 function readIndex() {
   try { return JSON.parse(readFileSync(idxFile(), 'utf8')) } catch { return { scenes: {} } }
@@ -70,6 +72,7 @@ async function handleApi(req, res, url) {
       return
     }
     if (req.method === 'POST') {
+      if (Object.values(idx.scenes).filter((s) => s.owner === user).length >= MAX_SCENES) { res.writeHead(429).end('limite de cenas'); return }
       const raw = await readBody(req, res); if (raw === null) return
       let name = 'Sem nome'
       try { name = String(JSON.parse(raw).name || name).slice(0, 80) } catch {}
@@ -86,15 +89,29 @@ async function handleApi(req, res, url) {
     return
   }
 
-  m = url.pathname.match(/^\/api\/scene\/([^/]+)$/)
+  m = url.pathname.match(/^\/api\/scene\/([^/]+)(\/thumb)?$/)
   if (m) {
     const ref = m[1]
+    const isThumb = !!m[2]
     if (!ID.test(ref.replace(/^v-/, ''))) { res.writeHead(404).end(); return }
     const viewOf = Object.entries(idx.scenes).find(([, s]) => s.viewId === ref)?.[0]
     const id = idx.scenes[ref] ? ref : viewOf
     const meta = idx.scenes[id]
     if (!meta) { res.writeHead(404).end(); return }
     const readOnly = !idx.scenes[ref] // chegou pelo viewId
+
+    if (isThumb) {
+      if (req.method === 'GET') {
+        try { res.writeHead(200, { 'Content-Type': 'text/plain' }).end(await readFile(thumbFile(id), 'utf8')) } catch { res.writeHead(404).end() }
+      } else if (readOnly) res.writeHead(403).end()
+      else if (req.method === 'PUT' || req.method === 'POST') {
+        const raw = await readBody(req, res); if (raw === null) return
+        await mkdir(path.join(DATA, 'scenes'), { recursive: true })
+        await writeFile(thumbFile(id), raw)
+        res.writeHead(204).end()
+      } else res.writeHead(405).end()
+      return
+    }
 
     if (req.method === 'GET') {
       try {
@@ -104,13 +121,14 @@ async function handleApi(req, res, url) {
       return
     }
     if (readOnly) { res.writeHead(403).end() } // viewId nunca escreve
-    else if (req.method === 'PUT') {
+    else if (req.method === 'PUT' || req.method === 'POST') { // POST = alias p/ navigator.sendBeacon no pagehide
       const raw = await readBody(req, res); if (raw === null) return
       try { JSON.parse(raw) } catch { res.writeHead(400).end('invalid json'); return }
       const f = sceneFile(id)
       await backupDaily(f)
-      await writeFile(f + '.tmp', raw)
-      await rename(f + '.tmp', f) // escrita atômica
+      const tmp = f + '.' + crypto.randomUUID() + '.tmp' // tmp único: PUTs concorrentes não se corrompem
+      await writeFile(tmp, raw)
+      await rename(tmp, f) // escrita atômica
       meta.updatedAt = Date.now()
       writeIndex(idx)
       res.writeHead(204).end()
@@ -124,6 +142,7 @@ async function handleApi(req, res, url) {
       writeIndex(idx)
       await mkdir(path.join(DATA, 'trash'), { recursive: true })
       try { await rename(sceneFile(id), path.join(DATA, 'trash', id + '.excalidraw')) } catch {}
+      try { await unlink(thumbFile(id)) } catch {}
       res.writeHead(204).end()
     } else res.writeHead(405).end()
     return
@@ -135,7 +154,9 @@ async function handleApi(req, res, url) {
 async function handleStatic(req, res, urlPath) {
   // rotas de app (/d/:id, /v/:viewId) servem o shell
   if (/^\/(d|v)\//.test(urlPath)) urlPath = '/index.html'
-  let p = path.normalize(path.join(PUB, decodeURIComponent(urlPath)))
+  let dec
+  try { dec = decodeURIComponent(urlPath) } catch { res.writeHead(404).end(); return } // %zz malformado
+  let p = path.normalize(path.join(PUB, dec))
   if (p !== PUB && !p.startsWith(PUB + path.sep)) { res.writeHead(404).end(); return } // path traversal
   try {
     if ((await stat(p)).isDirectory()) p = path.join(p, 'index.html')
@@ -182,6 +203,13 @@ async function check() {
   assert.deepEqual(view.scene, scene, 'viewId lê a mesma cena')
   assert.equal(view.viewId, undefined, 'viewId não vaza na resposta view')
   assert.equal((await fetch(`${base}/api/scene/${viewId}`, { method: 'PUT', body: JSON.stringify(scene) })).status, 403, 'viewId nunca escreve')
+
+  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'POST', body: JSON.stringify(scene) })).status, 204, 'POST alias de PUT (sendBeacon)')
+
+  assert.equal((await fetch(`${base}/api/scene/${id}/thumb`, { method: 'PUT', body: 'data:image/webp;base64,xyz' })).status, 204, 'thumb PUT')
+  assert.equal(await fetch(`${base}/api/scene/${id}/thumb`).then((r) => r.text()), 'data:image/webp;base64,xyz', 'thumb round-trip')
+  assert.equal(await fetch(`${base}/api/scene/${viewId}/thumb`).then((r) => r.status), 200, 'thumb legível pelo viewId')
+  assert.equal((await fetch(`${base}/api/scene/${viewId}/thumb`, { method: 'PUT', body: 'x' })).status, 403, 'viewId não escreve thumb')
 
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: 'lixo' })).status, 400, 'json inválido 400')
   assert.deepEqual((await fetch(`${base}/api/scene/${id}`).then(j)).scene, scene, 'inválido não corrompe')

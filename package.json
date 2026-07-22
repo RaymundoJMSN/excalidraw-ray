@@ -1,6 +1,6 @@
 {
   "name": "excalidraw-ray",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Excalidraw desktop com autosave e multi-projetos",
   "main": "./out/main/index.js",
   "scripts": {

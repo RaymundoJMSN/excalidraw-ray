@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('ray', {
   create: (name) => ipcRenderer.invoke('projects:create', name),
   load: (id) => ipcRenderer.invoke('projects:load', id),
   save: (id, json) => ipcRenderer.invoke('projects:save', id, json),
+  saveThumb: (id, dataURL) => ipcRenderer.invoke('projects:saveThumb', id, dataURL),
+  thumb: (id) => ipcRenderer.invoke('projects:thumb', id),
   rename: (id, name) => ipcRenderer.invoke('projects:rename', id, name),
   remove: (id) => ipcRenderer.invoke('projects:delete', id),
   last: () => ipcRenderer.invoke('projects:last'),
@@ -11,4 +13,6 @@ contextBridge.exposeInMainWorld('ray', {
   openFolder: () => ipcRenderer.invoke('projects:openFolder'),
   onFlush: (cb) => ipcRenderer.on('flush', () => cb()),
   flushed: () => ipcRenderer.send('flushed'),
+  onUpdate: (cb) => ipcRenderer.on('update-available', (_e, v) => cb(v)),
+  runUpdate: () => ipcRenderer.invoke('update:run'),
 })

@@ -27,6 +27,8 @@ const ls = {
     const i = this._index()
     if (i.projects[id]) { i.projects[id].updatedAt = Date.now(); this._write(i) }
   },
+  async saveThumb(id, dataURL) { try { localStorage['rayThumb:' + id] = dataURL } catch {} },
+  async thumb(id) { return localStorage['rayThumb:' + id] ?? null },
   async rename(id, name) { const i = this._index(); if (i.projects[id]) { i.projects[id].name = name; this._write(i) } },
   async remove(id) {
     const i = this._index()
@@ -34,6 +36,7 @@ const ls = {
     if (i.last === id) i.last = Object.keys(i.projects)[0] ?? null
     this._write(i)
     delete localStorage['rayScene:' + id]
+    delete localStorage['rayThumb:' + id]
   },
   async last() { return this._index().last },
   async setLast(id) { const i = this._index(); i.last = id; this._write(i) },
@@ -44,9 +47,15 @@ const ls = {
 
 const web = {
   user: () => localStorage.rayUser,
-  async list() { return fetch(`/api/u/${this.user()}/scenes`).then((r) => r.json()) },
+  async list() {
+    const r = await fetch(`/api/u/${this.user()}/scenes`)
+    if (!r.ok) return []
+    return r.json()
+  },
   async create(name) {
-    const { id, viewId } = await fetch(`/api/u/${this.user()}/scenes`, { method: 'POST', body: JSON.stringify({ name }) }).then((r) => r.json())
+    const r = await fetch(`/api/u/${this.user()}/scenes`, { method: 'POST', body: JSON.stringify({ name }) })
+    if (!r.ok) throw new Error('create falhou: ' + r.status)
+    const { id, viewId } = await r.json()
     sceneMeta[id] = { readOnly: false, viewId, name }
     return id
   },
@@ -57,7 +66,21 @@ const web = {
     sceneMeta[id] = { readOnly: d.readOnly, viewId: d.viewId, name: d.name }
     return JSON.stringify(d.scene)
   },
-  async save(id, json) { await fetch(`/api/scene/${id}`, { method: 'PUT', body: json }) },
+  async save(id, json) {
+    const r = await fetch(`/api/scene/${id}`, { method: 'PUT', body: json })
+    if (!r.ok) throw new Error('save falhou: ' + r.status) // App retém pending e re-tenta
+  },
+  saveBeacon(id, json) {
+    // pagehide: fetch normal seria abortado; sendBeacon sobrevive ao unload (limite ~64KB, melhor esforço)
+    return navigator.sendBeacon(`/api/scene/${id}`, new Blob([json], { type: 'application/json' }))
+  },
+  async saveThumb(id, dataURL) { try { await fetch(`/api/scene/${id}/thumb`, { method: 'PUT', body: dataURL }) } catch {} },
+  async thumb(id) {
+    try {
+      const r = await fetch(`/api/scene/${id}/thumb`)
+      return r.ok ? r.text() : null
+    } catch { return null }
+  },
   async rename(id, name) { await fetch(`/api/scene/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }) },
   async remove(id) { await fetch(`/api/scene/${id}`, { method: 'DELETE' }) },
   async last() { return localStorage['rayLast:' + this.user()] ?? null },
