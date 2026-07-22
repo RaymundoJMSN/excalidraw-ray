@@ -1,0 +1,17 @@
+.ray-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 10; display: flex; align-items: center; justify-content: center; }
+.ray-panel { background: #232329; color: #ced4da; border-radius: 10px; padding: 16px; width: min(440px, 90vw); max-height: 70vh; overflow: auto; font-family: 'Assistant', system-ui, sans-serif; box-shadow: 0 7px 14px rgba(0, 0, 0, .35); }
+.ray-panel header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ray-panel h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.ray-panel ul { list-style: none; margin: 0; padding: 0; }
+.ray-panel li { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; }
+.ray-panel li:hover { background: #2e2d39; }
+.ray-panel li.atual { background: #403e6a33; }
+.ray-name { flex: 1; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 6px 4px; cursor: pointer; }
+.ray-badge { font-size: 11px; color: #a8a5ff; margin-left: 6px; }
+.ray-date { font-size: 12px; color: #7d7c88; white-space: nowrap; }
+.ray-edit, .ray-del { background: none; border: 0; color: #7d7c88; cursor: pointer; font-size: 14px; padding: 4px; border-radius: 6px; }
+.ray-edit:hover { color: #ced4da; background: #37363f; }
+.ray-del:hover { color: #ff8383; background: #37363f; }
+.ray-new { background: #a8a5ff22; border: 0; color: #a8a5ff; font: inherit; font-weight: 600; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.ray-new:hover { background: #a8a5ff33; }
+.ray-panel input { flex: 1; background: #121212; border: 1px solid #a8a5ff; border-radius: 6px; color: #ced4da; font: inherit; padding: 5px 8px; }
