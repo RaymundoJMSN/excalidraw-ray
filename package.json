@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "Excalidraw desktop com autosave e multi-projetos",
   "main": "./out/main/index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -24,14 +21,40 @@
   },
   "homepage": "https://github.com/RaymundoJMSN/excalidraw-ray#readme",
   "devDependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
-    "vite": "^7.3.6",
-    "@excalidraw/excalidraw": "^0.18.1",
+    "png-to-ico": "^3.0.2",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sharp": "^0.35.3",
+    "vite": "^7.3.6"
   },
-  "productName": "Excalidraw Ray"
+  "productName": "Excalidraw Ray",
+  "build": {
+    "appId": "br.com.raynathus.excalidrawray",
+    "productName": "Excalidraw Ray",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "npmRebuild": false
+  }
 }
