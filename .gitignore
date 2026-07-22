@@ -5,3 +5,5 @@ dist-electron/
 .DS_Store
 release/
 out/
+server/public/
+server/data/
