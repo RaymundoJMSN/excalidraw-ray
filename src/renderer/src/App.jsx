@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob } from '@excalidraw/excalidraw'
+import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob, useHandleLibrary } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { ray, isWeb, sceneMeta } from './storage'
 import { IconNew, IconProjects, IconFolderOpen, IconShare } from './icons'
@@ -24,6 +24,8 @@ export default function App() {
   const idRef = useRef(null)
   const apiRef = useRef(null)
   const lastThumb = useRef(0)
+  const [excaliApi, setExcaliApi] = useState(null)
+  useHandleLibrary({ excalidrawAPI: excaliApi }) // faz o "Add to Excalidraw" (#addLibrary) do site de bibliotecas funcionar
 
   const readOnly = !!(current && sceneMeta[current.id]?.readOnly)
   const refresh = async () => setProjects(await ray.list())
@@ -147,7 +149,7 @@ export default function App() {
     <div style={{ height: '100%' }}>
       <Excalidraw key={current.id} initialData={current.data} langCode="pt-BR" onChange={onChange}
         viewModeEnabled={readOnly || undefined}
-        excalidrawAPI={(a) => { apiRef.current = a; if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray } }}
+        excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray } }}
         UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         renderTopRightUI={() => updateVersion && (
           <button className="ray-update" title={`Atualizar para a versão ${updateVersion} (baixa e reinstala sozinho)`}

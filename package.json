@@ -1,6 +1,6 @@
 {
   "name": "excalidraw-ray",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Excalidraw desktop com autosave e multi-projetos",
   "main": "./out/main/index.js",
   "scripts": {
@@ -34,10 +34,10 @@
     "sharp": "^0.35.3",
     "vite": "^7.3.6"
   },
-  "productName": "Excalidraw Ray",
+  "productName": "Excalidraw",
   "build": {
     "appId": "br.com.raynathus.excalidrawray",
-    "productName": "Excalidraw Ray",
+    "productName": "Excalidraw",
     "directories": {
       "output": "release",
       "buildResources": "build"

@@ -14,6 +14,10 @@ const DICT = {
   'No matching commands': 'Nenhum comando encontrado',
 }
 
+// ponytail: wrapSelectionInFrame da 0.18.1 cria frame com index inválido → crash + remount em branco.
+// Escondemos o item até o upstream corrigir (frames continuam via ferramenta F).
+const REMOVER = ['Wrap selection in frame']
+
 function fixNode(n) {
   if (n.nodeType === Node.TEXT_NODE) {
     const t = n.textContent.trim()
@@ -25,6 +29,7 @@ function fixNode(n) {
   for (let t = w.nextNode(); t; t = w.nextNode()) {
     const s = t.textContent.trim()
     if (DICT[s]) t.textContent = t.textContent.replace(s, DICT[s])
+    if (REMOVER.includes(s)) t.parentElement?.closest('li, button')?.remove()
   }
   for (const el of [n, ...n.querySelectorAll('[placeholder], [title], [aria-label]')]) {
     for (const attr of ['placeholder', 'title', 'aria-label']) {

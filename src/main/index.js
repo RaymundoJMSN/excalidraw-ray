@@ -19,6 +19,10 @@ function createWindow() {
   })
   if (s.maximized ?? true) win.maximize()
   win.once('ready-to-show', () => win.show())
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) shell.openExternal(url) // links (bibliotecas, ajuda) abrem no navegador de verdade
+    return { action: 'deny' }
+  })
   win.on('close', (e) => {
     try { fs.writeFileSync(winStateFile(), JSON.stringify({ ...win.getNormalBounds(), maximized: win.isMaximized() })) } catch {}
     if (!flushed) { // dá 1.5s pro renderer salvar o autosave pendente
