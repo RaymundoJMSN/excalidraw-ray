@@ -169,6 +169,7 @@ export default function App() {
     <div style={{ height: '100%' }}>
       <Excalidraw key={current.id} initialData={current.data} langCode="pt-BR" onChange={onChange}
         viewModeEnabled={readOnly || undefined}
+        validateEmbeddable // qualquer URL pode ser embedada (a whitelist do pacote barrava quase tudo)
         excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray } }}
         UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         renderTopRightUI={() => updateVersion && (
