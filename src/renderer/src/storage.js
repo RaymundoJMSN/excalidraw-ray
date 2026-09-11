@@ -1,11 +1,15 @@
-// 3 modos: Electron (IPC window.ray) · web (API HTTP, build --mode web) · fallback localStorage (preview dev).
+// 3 modos: Electron (IPC window.ray) · web (API HTTP, build --mode web) · fallback LS (preview dev).
 export const isWeb = import.meta.env.MODE === 'web'
 export const sceneMeta = {} // id → { readOnly, viewId, name } (só web)
 
+// ponytail: iframe com sandbox (Notion etc) bloqueia localStorage e o acesso LANÇA —
+// sem isto o embed renderiza preto. Fallback = objeto em memória (por página, suficiente pra view).
+export const LS = (() => { try { localStorage.rayProbe; return localStorage } catch { return {} } })()
+
 const ls = {
-  // ponytail: shim localStorage p/ preview no browser
-  _index() { return JSON.parse(localStorage.rayIndex ?? '{"last":null,"projects":{}}') },
-  _write(i) { localStorage.rayIndex = JSON.stringify(i) },
+  // ponytail: shim LS p/ preview no browser
+  _index() { return JSON.parse(LS.rayIndex ?? '{"last":null,"projects":{}}') },
+  _write(i) { LS.rayIndex = JSON.stringify(i) },
   async list() {
     const i = this._index()
     return Object.entries(i.projects)
@@ -18,25 +22,25 @@ const ls = {
     i.projects[id] = { name, updatedAt: Date.now() }
     i.last = id
     this._write(i)
-    localStorage['rayScene:' + id] = JSON.stringify({ type: 'excalidraw', version: 2, source: 'excalidraw-ray', elements: [], appState: { theme: 'dark' }, files: {} })
+    LS['rayScene:' + id] = JSON.stringify({ type: 'excalidraw', version: 2, source: 'excalidraw-ray', elements: [], appState: { theme: 'dark' }, files: {} })
     return id
   },
-  async load(id) { return localStorage['rayScene:' + id] ?? null },
+  async load(id) { return LS['rayScene:' + id] ?? null },
   async save(id, json) {
-    localStorage['rayScene:' + id] = json
+    LS['rayScene:' + id] = json
     const i = this._index()
     if (i.projects[id]) { i.projects[id].updatedAt = Date.now(); this._write(i) }
   },
-  async saveThumb(id, dataURL) { try { localStorage['rayThumb:' + id] = dataURL } catch {} },
-  async thumb(id) { return localStorage['rayThumb:' + id] ?? null },
+  async saveThumb(id, dataURL) { try { LS['rayThumb:' + id] = dataURL } catch {} },
+  async thumb(id) { return LS['rayThumb:' + id] ?? null },
   async rename(id, name) { const i = this._index(); if (i.projects[id]) { i.projects[id].name = name; this._write(i) } },
   async remove(id) {
     const i = this._index()
     delete i.projects[id]
     if (i.last === id) i.last = Object.keys(i.projects)[0] ?? null
     this._write(i)
-    delete localStorage['rayScene:' + id]
-    delete localStorage['rayThumb:' + id]
+    delete LS['rayScene:' + id]
+    delete LS['rayThumb:' + id]
   },
   async last() { return this._index().last },
   async setLast(id) { const i = this._index(); i.last = id; this._write(i) },
@@ -46,7 +50,7 @@ const ls = {
 }
 
 const web = {
-  user: () => localStorage.rayUser,
+  user: () => LS.rayUser,
   async list() {
     const r = await fetch(`/api/u/${this.user()}/scenes`)
     if (!r.ok) return []
@@ -83,11 +87,13 @@ const web = {
   },
   async rename(id, name) { await fetch(`/api/scene/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }) },
   async remove(id) { await fetch(`/api/scene/${id}`, { method: 'DELETE' }) },
-  async last() { return localStorage['rayLast:' + this.user()] ?? null },
+  async last() { return LS['rayLast:' + this.user()] ?? null },
   async setLast(id) {
-    if (id.startsWith('v-')) { history.replaceState(null, '', '/v/' + id); return } // link view: não vira "último"
-    if (this.user()) localStorage['rayLast:' + this.user()] = id
-    history.replaceState(null, '', '/d/' + id)
+    try { // replaceState também pode lançar em iframe sandbox
+      if (id.startsWith('v-')) { history.replaceState(null, '', '/v/' + id); return } // link view: não vira "último"
+      if (this.user()) LS['rayLast:' + this.user()] = id
+      history.replaceState(null, '', '/d/' + id)
+    } catch {}
   },
   async openFolder() {},
   onFlush() {},

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LS } from './storage'
 import './panel.css'
 
 export default function Login({ onLogin }) {
@@ -6,7 +7,7 @@ export default function Login({ onLogin }) {
   const ok = /^[a-z0-9-]{1,30}$/.test(name)
   const entrar = () => {
     if (!ok) return
-    localStorage.rayUser = name
+    LS.rayUser = name
     onLogin(name)
   }
   return (

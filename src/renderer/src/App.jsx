@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob, useHandleLibrary, loadLibraryFromBlob } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
-import { ray, isWeb, sceneMeta } from './storage'
+import { ray, isWeb, sceneMeta, LS } from './storage'
 import { IconNew, IconProjects, IconFolderOpen, IconShare } from './icons'
 import { instalarTraducoes } from './i18n'
 import ProjectsPanel from './ProjectsPanel'
@@ -12,7 +12,7 @@ const THUMB_MS = 10000 // regenera thumbnail no máximo a cada 10s
 
 export default function App() {
   const [route] = useState(() => (isWeb ? location.pathname.match(/^\/(d|v)\/(.+)$/) : null))
-  const [user, setUser] = useState(() => (isWeb ? localStorage.rayUser ?? null : 'local'))
+  const [user, setUser] = useState(() => (isWeb ? LS.rayUser ?? null : 'local'))
   const guest = isWeb && !user // chegou por link compartilhado, sem login
   const [projects, setProjects] = useState([])
   const [current, setCurrent] = useState(null) // { id, data } | { id, missing: true }
@@ -64,7 +64,7 @@ export default function App() {
     let data = null
     try {
       data = JSON.parse(raw)
-      data.appState = { ...data.appState, theme: localStorage.rayTheme ?? data.appState?.theme ?? 'dark' }
+      data.appState = { ...data.appState, theme: LS.rayTheme ?? data.appState?.theme ?? 'dark' }
     } catch {}
     idRef.current = id
     setCurrent({ id, data })
@@ -98,6 +98,17 @@ export default function App() {
   }, [user])
 
   useEffect(() => {
+    // colou uma foto → troca pra seleção (tecla 1) pra já poder mover/redimensionar
+    const onPaste = (e) => {
+      if ([...(e.clipboardData?.items ?? [])].some((i) => i.type.startsWith('image/'))) {
+        setTimeout(() => apiRef.current?.setActiveTool({ type: 'selection' }), 300)
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
+
+  useEffect(() => {
     if (!isWeb) return
     const onHide = () => {
       // aba fechando/minimizada: fetch normal morre no unload — sendBeacon sobrevive
@@ -113,7 +124,7 @@ export default function App() {
   }, [])
 
   const onChange = useCallback((els, st, files) => {
-    localStorage.rayTheme = st.theme
+    LS.rayTheme = st.theme
     if (sceneMeta[idRef.current]?.readOnly) return // view nunca salva
     pending.current = [els, st, files]
     if (!timer.current) timer.current = setTimeout(() => { timer.current = null; flush() }, 800)
