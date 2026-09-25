@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Menu } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -35,6 +35,16 @@ function createWindow() {
       const t = setTimeout(done, 1500)
       ipcMain.once('flushed', done)
     }
+  })
+  // corretor ortográfico: o Chromium já sublinha, mas o Electron não mostra menu nenhum no botão
+  // direito — sem isto não tem como aceitar a sugestão. Só em campo editável (o canvas tem o menu do Excalidraw).
+  win.webContents.session.setSpellCheckerLanguages(['pt-BR', 'en-US']) // no Windows vale só idioma instalado no sistema
+  win.webContents.on('context-menu', (_e, p) => {
+    if (!p.isEditable) return
+    const itens = p.dictionarySuggestions.map((s) => ({ label: s, click: () => win.webContents.replaceMisspelling(s) }))
+    if (p.misspelledWord) itens.push({ label: 'Adicionar ao dicionário', click: () => win.webContents.session.addWordToSpellCheckerDictionary(p.misspelledWord) }, { type: 'separator' })
+    itens.push({ role: 'cut', label: 'Recortar' }, { role: 'copy', label: 'Copiar' }, { role: 'paste', label: 'Colar' })
+    Menu.buildFromTemplate(itens).popup()
   })
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else win.loadFile(path.join(__dirname, '../renderer/index.html'))
