@@ -4,53 +4,68 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dados</title>
 <style>
-  :root { color-scheme: dark }
-  body { margin: 0; min-height: 100vh; display: grid; place-content: center; gap: 14px;
-         background: #1b1b1f; color: #eee; font: 18px system-ui, sans-serif; text-align: center }
-  input { font: inherit; font-size: 28px; width: 10em; padding: 6px 10px; text-align: center;
-          background: #26262c; color: #fff; border: 1px solid #444; border-radius: 8px }
-  input:focus { outline: 2px solid #ffc200 }
-  .botoes { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap }
-  button { font: inherit; padding: 6px 12px; background: #2d2d35; color: #ddd; border: 0; border-radius: 6px; cursor: pointer }
-  button:hover { background: #3a3a44 }
-  #total { font-size: 72px; font-weight: 700; color: #ffc200; line-height: 1 }
-  #detalhe { color: #999; min-height: 1.4em }
-  #hist { color: #777; font-size: 14px; max-width: 24em; margin: 0 auto }
-  #hist div { padding: 2px 0 }
-  .max { color: #6f6 } .min { color: #f66 }
+  @font-face { font-family: Virgil; src: url(fonts/Virgil/Virgil-Regular.woff2) format("woff2") }
+  /* paleta do Excalidraw: claro = fundo branco / ilha #fff; escuro = #121212 / ilha #232329 */
+  :root { --bg: #ffffff; --ilha: #f8f9fa; --borda: #d6d6d6; --txt: #1b1b1f; --fraco: #8a8a94; --cor: #6965db; --cor-txt: #fff; --max: #2f9e44; --min: #e03131; color-scheme: light }
+  :root.escuro { --bg: #121212; --ilha: #232329; --borda: #3d3d48; --txt: #e3e3e8; --fraco: #7d7c88; --cor: #a8a5ff; --cor-txt: #121212; --max: #69db7c; --min: #ff8787; color-scheme: dark }
+  * { box-sizing: border-box }
+  html, body { height: 100% }
+  body { margin: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+         background: var(--bg); color: var(--txt); font: 14px Virgil, "Segoe UI", system-ui, sans-serif; user-select: none }
+  form { display: flex; gap: 6px }
+  input { flex: 1; min-width: 0; font: 20px Virgil, system-ui, sans-serif; padding: 6px 10px; border-radius: 8px;
+          background: var(--ilha); color: var(--txt); border: 1px solid var(--borda); user-select: text }
+  input:focus { outline: none; border-color: var(--cor); box-shadow: 0 0 0 1px var(--cor) }
+  button { font: inherit; border: 1px solid var(--borda); border-radius: 8px; background: var(--ilha); color: var(--txt); cursor: pointer; padding: 4px 8px }
+  button:hover { border-color: var(--cor) }
+  .rolar { background: var(--cor); color: var(--cor-txt); border-color: var(--cor); padding: 4px 14px }
+  .botoes { display: flex; gap: 4px; flex-wrap: wrap }
+  .botoes button { flex: 1; padding: 3px 0; font-size: 13px }
+  #total { font-size: 56px; line-height: 1; text-align: center; color: var(--cor); margin: 4px 0 }
+  #total.erro { font-size: 16px; color: var(--min) }
+  #detalhe { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; min-height: 22px }
+  .dado { display: inline-flex; align-items: center; gap: 3px; color: var(--fraco) }
+  .face { display: inline-block; min-width: 22px; padding: 1px 4px; text-align: center; border: 1px solid var(--borda); border-radius: 5px; color: var(--txt); background: var(--ilha) }
+  .face.fora { opacity: .4; text-decoration: line-through }
+  .face.max { border-color: var(--max); color: var(--max) }
+  .face.min { border-color: var(--min); color: var(--min) }
+  #hist { margin-top: auto; font-size: 12px; color: var(--fraco); overflow: hidden }
+  #hist div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer }
+  #hist div:hover { color: var(--txt) }
+  #hist b { color: var(--txt) }
 </style>
-<input id="f" value="1d20" autofocus spellcheck="false" placeholder="2d6+3">
-<div class="botoes"></div>
+<form id="form">
+  <input id="f" value="1d20" autofocus spellcheck="false" autocomplete="off" placeholder="2d20kh + 10*1d8">
+  <button class="rolar" type="submit">Rolar</button>
+</form>
+<div class="botoes" id="botoes"></div>
 <div id="total">—</div>
 <div id="detalhe"></div>
 <div id="hist"></div>
+<script src="dados.js"></script>
 <script>
+  // tema: ?theme=light|dark (o Excalidraw põe na URL ao inserir), senão o do sistema
+  const tema = new URLSearchParams(location.search).get("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+  document.documentElement.classList.toggle("escuro", tema === "dark")
+
   const f = document.getElementById("f"), total = document.getElementById("total"),
-        detalhe = document.getElementById("detalhe"), hist = document.getElementById("hist");
-  const hs = [];
-  function rolar(formula) {
-    formula = formula.replace(/\s+/g, "").toLowerCase();
-    if (!/^[+-]?(\d*d\d+|\d+)([+-](\d*d\d+|\d+))*$/.test(formula)) { total.textContent = "?"; detalhe.textContent = "ex.: 2d6+3, d20, 4d6-1"; return; }
-    let soma = 0; const partes = [];
-    for (const m of formula.matchAll(/([+-]?)(\d*)d(\d+)|([+-]?)(\d+)/g)) {
-      const sinal = (m[1] || m[4]) === "-" ? -1 : 1;
-      if (m[3]) {
-        const n = +(m[2] || 1), lados = +m[3], rs = [];
-        for (let i = 0; i < n; i++) rs.push(1 + Math.floor(Math.random() * lados));
-        soma += sinal * rs.reduce((a, b) => a + b, 0);
-        partes.push(`${n}d${lados} [${rs.map(r => r === lados ? `<span class=max>${r}</span>` : r === 1 && lados > 1 ? `<span class=min>${r}</span>` : r).join(" ")}]`);
-      } else { soma += sinal * +m[5]; partes.push((sinal < 0 ? "−" : "+") + m[5]); }
-    }
-    total.textContent = soma; detalhe.innerHTML = partes.join(" ");
-    hs.unshift(`${formula} → <b>${soma}</b>`); hs.length = Math.min(hs.length, 10);
-    hist.innerHTML = hs.map(h => `<div>${h}</div>`).join("");
+        detalhe = document.getElementById("detalhe"), hist = document.getElementById("hist"), hs = []
+  function rolar(expr) {
+    let r
+    try { r = rolarDados(expr) } catch (e) { total.textContent = e.message; total.className = "erro"; detalhe.innerHTML = ""; return }
+    total.className = ""; total.textContent = Number.isInteger(r.total) ? r.total : r.total.toFixed(2)
+    detalhe.innerHTML = r.partes.map(p => `<span class="dado">${p.dado}${p.rolagens.map(x =>
+      `<span class="face${x.usado ? "" : " fora"}${x.v === p.lados && p.lados > 1 ? " max" : x.v === 1 && p.lados > 1 ? " min" : ""}">${x.v}</span>`).join("")}</span>`).join("")
+    hs.unshift({ expr, total: total.textContent }); hs.length = Math.min(hs.length, 6)
+    hist.innerHTML = hs.map(h => `<div data-e="${h.expr}">${h.expr} → <b>${h.total}</b></div>`).join("")
   }
-  f.addEventListener("keydown", e => { if (e.key === "Enter") rolar(f.value); });
+  document.getElementById("form").addEventListener("submit", e => { e.preventDefault(); rolar(f.value); f.focus(); f.select() })
+  hist.addEventListener("click", e => { const d = e.target.closest("[data-e]"); if (d) { f.value = d.dataset.e; rolar(f.value) } })
   for (const d of ["d4", "d6", "d8", "d10", "d12", "d20", "d100"]) {
-    const b = document.createElement("button"); b.textContent = d;
-    b.onclick = () => { f.value = "1" + d; rolar(f.value); f.focus(); };
-    document.querySelector(".botoes").append(b);
+    const b = document.createElement("button"); b.textContent = d; b.type = "button"
+    b.onclick = () => { f.value = "1" + d; rolar(f.value) }
+    document.getElementById("botoes").append(b)
   }
-  // ponytail: sem salvar histórico; se quiser, localStorage
+  // ponytail: histórico só em memória; localStorage se um dia precisar sobreviver ao reload
 </script>
 </html>

@@ -4,6 +4,7 @@ import '@excalidraw/excalidraw/index.css'
 import { ray, isWeb, sceneMeta, LS } from './storage'
 import { IconNew, IconProjects, IconFolderOpen, IconShare } from './icons'
 import { instalarTraducoes } from './i18n'
+import { instalarMenuDados } from './dados'
 import ProjectsPanel from './ProjectsPanel'
 import ShareDialog from './ShareDialog'
 import Login from './Login'
@@ -24,6 +25,7 @@ export default function App() {
   const idRef = useRef(null)
   const apiRef = useRef(null)
   const lastThumb = useRef(0)
+  const lastView = useRef('')
   const [excaliApi, setExcaliApi] = useState(null)
   useHandleLibrary({ excalidrawAPI: excaliApi }) // faz o "Add to Excalidraw" (#addLibrary) do site de bibliotecas funcionar
 
@@ -65,6 +67,9 @@ export default function App() {
     try {
       data = JSON.parse(raw)
       data.appState = { ...data.appState, theme: LS.rayTheme ?? data.appState?.theme ?? 'dark' }
+      // vista (scroll/zoom) não vai pro arquivo (serializeAsJSON descarta); fica no LS por projeto
+      const v = JSON.parse(LS['rayView:' + id] ?? 'null')
+      if (v) data.appState = { ...data.appState, scrollX: v.x, scrollY: v.y, zoom: { value: v.z } }
     } catch {}
     idRef.current = id
     setCurrent({ id, data })
@@ -94,7 +99,9 @@ export default function App() {
         apiRef.current?.setToast({ message: 'Não consegui adicionar essa biblioteca.', closable: true })
       }
     })
-    return instalarTraducoes()
+    const pararTraducoes = instalarTraducoes()
+    const pararMenu = instalarMenuDados(() => apiRef.current)
+    return () => { pararTraducoes(); pararMenu() }
   }, [user])
 
   useEffect(() => {
@@ -125,6 +132,10 @@ export default function App() {
 
   const onChange = useCallback((els, st, files) => {
     LS.rayTheme = st.theme
+    if (idRef.current) {
+      const v = JSON.stringify({ x: st.scrollX, y: st.scrollY, z: st.zoom.value })
+      if (v !== lastView.current) { lastView.current = v; try { LS['rayView:' + idRef.current] = v } catch {} }
+    }
     if (sceneMeta[idRef.current]?.readOnly) return // view nunca salva
     pending.current = [els, st, files]
     if (!timer.current) timer.current = setTimeout(() => { timer.current = null; flush() }, 800)
