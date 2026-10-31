@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob, useHandleLibrary, loadLibraryFromBlob } from '@excalidraw/excalidraw'
+import { Excalidraw, MainMenu, serializeAsJSON, convertToExcalidrawElements, exportToBlob, useHandleLibrary, loadLibraryFromBlob, restoreElements, CaptureUpdateAction } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { ray, isWeb, sceneMeta, LS } from './storage'
-import { IconNew, IconProjects, IconFolderOpen, IconShare } from './icons'
+import { IconNew, IconProjects, IconFolderOpen, IconShare, IconCloud } from './icons'
 import { instalarTraducoes } from './i18n'
 import { instalarMenuDados } from './dados'
 import ProjectsPanel from './ProjectsPanel'
 import ShareDialog from './ShareDialog'
 import Login from './Login'
+import SyncDialog from './SyncDialog'
 
 const THUMB_MS = 10000 // regenera thumbnail no máximo a cada 10s
+const POLL_MS = 15000 // web: confere se a cena mudou em outro aparelho
+
+// muda só quando o desenho muda — scroll/seleção não disparam save (e cena recém-baixada não volta pra nuvem)
+const sceneSig = (els, st, files) =>
+  `${els.length}:${els.reduce((a, e) => a + e.version, 0)}:${Object.keys(files ?? {}).length}:${st.viewBackgroundColor}:${st.gridModeEnabled}:${st.gridSize}`
 
 export default function App() {
   const [route] = useState(() => (isWeb ? location.pathname.match(/^\/(d|v)\/(.+)$/) : null))
@@ -19,6 +25,7 @@ export default function App() {
   const [current, setCurrent] = useState(null) // { id, data } | { id, missing: true }
   const [showPanel, setShowPanel] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showSync, setShowSync] = useState(false)
   const [updateVersion, setUpdateVersion] = useState(null)
   const pending = useRef(null) // últimos (elements, appState, files) ainda não salvos
   const timer = useRef(null)
@@ -26,6 +33,8 @@ export default function App() {
   const apiRef = useRef(null)
   const lastThumb = useRef(0)
   const lastView = useRef('')
+  const lastSig = useRef(null)
+  const absorbUntil = useRef(0) // onChange logo após carregar/aplicar cena remota só registra a assinatura
   const [excaliApi, setExcaliApi] = useState(null)
   useHandleLibrary({ excalidrawAPI: excaliApi }) // faz o "Add to Excalidraw" (#addLibrary) do site de bibliotecas funcionar
 
@@ -59,6 +68,21 @@ export default function App() {
     })
   }
 
+  // cena atual mudou em outro aparelho: aplica por cima (se não houver edição local pendente — aí a local vence)
+  function applyRemote(raw) {
+    const api = apiRef.current
+    if (!api || !raw || pending.current || timer.current) return
+    let d
+    try { d = JSON.parse(raw) } catch { return }
+    absorbUntil.current = Date.now() + 1000
+    if (d.files) api.addFiles(Object.values(d.files))
+    api.updateScene({
+      elements: restoreElements(d.elements ?? [], null),
+      ...(d.appState?.viewBackgroundColor ? { appState: { viewBackgroundColor: d.appState.viewBackgroundColor } } : {}),
+      captureUpdate: CaptureUpdateAction.NEVER,
+    })
+  }
+
   const open = useCallback(async (id) => {
     await flush()
     const raw = await ray.load(id)
@@ -72,6 +96,8 @@ export default function App() {
       if (v) data.appState = { ...data.appState, scrollX: v.x, scrollY: v.y, zoom: { value: v.z } }
     } catch {}
     idRef.current = id
+    lastSig.current = null
+    absorbUntil.current = Date.now() + 1500
     setCurrent({ id, data })
     ray.setLast(id)
     setShowPanel(false)
@@ -90,6 +116,12 @@ export default function App() {
     })()
     ray.onFlush(async () => { await flush(); ray.flushed() })
     window.ray?.onUpdate?.((v) => setUpdateVersion(v))
+    window.ray?.onSync?.(async (type, p) => { // desktop: sync no main avisou que algo veio da nuvem
+      if (type === 'list') refresh()
+      if (type !== 'changed' || p.id !== idRef.current) return
+      if (p.deleted) { idRef.current = null; pending.current = null; location.reload(); return }
+      applyRemote(await ray.load(p.id))
+    })
     window.ray?.onAddLibrary?.(async (json) => { // "Add to Excalidraw" vindo da janela de bibliotecas (desktop)
       try {
         const items = await loadLibraryFromBlob(new Blob([json]))
@@ -130,6 +162,19 @@ export default function App() {
     return () => { window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onVis) }
   }, [])
 
+  useEffect(() => {
+    if (!isWeb) return
+    const check = async () => {
+      if (document.visibilityState !== 'visible' || !idRef.current || pending.current) return
+      applyRemote(await ray.checkRemote(idRef.current))
+    }
+    const t = setInterval(check, POLL_MS)
+    const onVis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', check)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('focus', check) }
+  }, [])
+
   const onChange = useCallback((els, st, files) => {
     LS.rayTheme = st.theme
     if (idRef.current) {
@@ -137,6 +182,10 @@ export default function App() {
       if (v !== lastView.current) { lastView.current = v; try { LS['rayView:' + idRef.current] = v } catch {} }
     }
     if (sceneMeta[idRef.current]?.readOnly) return // view nunca salva
+    const s = sceneSig(els, st, files)
+    if (s === lastSig.current) return
+    lastSig.current = s
+    if (Date.now() < absorbUntil.current) { absorbUntil.current = 0; return } // só o 1º onChange
     pending.current = [els, st, files]
     if (!timer.current) timer.current = setTimeout(() => { timer.current = null; flush() }, 800)
   }, [])
@@ -208,6 +257,7 @@ export default function App() {
             <MainMenu.DefaultItems.ClearCanvas />
             <MainMenu.Separator />
             {!isWeb && <MainMenu.Item onSelect={() => ray.openFolder()} icon={<IconFolderOpen />}>Abrir pasta de projetos</MainMenu.Item>}
+            {window.ray?.syncGet && <MainMenu.Item onSelect={() => setShowSync(true)} icon={<IconCloud />}>Sincronizar com a nuvem…</MainMenu.Item>}
             {!isWeb && <MainMenu.Separator />}
             <MainMenu.DefaultItems.ToggleTheme />
             <MainMenu.DefaultItems.ChangeCanvasBackground />
@@ -227,6 +277,7 @@ export default function App() {
           }}
           onClose={() => setShowPanel(false)} />
       )}
+      {showSync && <SyncDialog onClose={() => setShowSync(false)} />}
       {showShare && current && sceneMeta[current.id] && (
         <ShareDialog id={current.id} viewId={sceneMeta[current.id].viewId} onClose={() => setShowShare(false)} />
       )}

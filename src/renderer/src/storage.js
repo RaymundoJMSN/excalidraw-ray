@@ -67,12 +67,30 @@ const web = {
     const r = await fetch(`/api/scene/${id}`)
     if (!r.ok) return null
     const d = await r.json()
-    sceneMeta[id] = { readOnly: d.readOnly, viewId: d.viewId, name: d.name }
+    sceneMeta[id] = { readOnly: d.readOnly, viewId: d.viewId, name: d.name, updatedAt: d.updatedAt }
     return JSON.stringify(d.scene)
   },
   async save(id, json) {
     const r = await fetch(`/api/scene/${id}`, { method: 'PUT', body: json })
     if (!r.ok) throw new Error('save falhou: ' + r.status) // App retém pending e re-tenta
+    const d = await r.json().catch(() => ({}))
+    if (d.updatedAt && sceneMeta[id]) sceneMeta[id].updatedAt = d.updatedAt // nossa própria escrita não volta como "mudança remota"
+  },
+  async checkRemote(id) {
+    // mudou em outro aparelho? poll leve (?meta) e só baixa a cena se a versão mudou
+    try {
+      const m = sceneMeta[id]
+      if (!m) return null
+      const r = await fetch(`/api/scene/${id}?meta=1`)
+      if (!r.ok) return null
+      const { updatedAt } = await r.json()
+      if (!updatedAt || updatedAt === m.updatedAt) return null
+      const g = await fetch(`/api/scene/${id}`)
+      if (!g.ok) return null
+      const d = await g.json()
+      m.updatedAt = d.updatedAt
+      return JSON.stringify(d.scene)
+    } catch { return null }
   },
   saveBeacon(id, json) {
     // pagehide: fetch normal seria abortado; sendBeacon sobrevive ao unload (limite ~64KB, melhor esforço)

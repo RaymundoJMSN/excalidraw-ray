@@ -16,4 +16,9 @@ contextBridge.exposeInMainWorld('ray', {
   onUpdate: (cb) => ipcRenderer.on('update-available', (_e, v) => cb(v)),
   onAddLibrary: (cb) => ipcRenderer.on('add-library', (_e, json) => cb(json)),
   runUpdate: () => ipcRenderer.invoke('update:run'),
+  syncGet: () => ipcRenderer.invoke('sync:get'),
+  syncEnable: (cfg) => ipcRenderer.invoke('sync:enable', cfg),
+  syncDisable: () => ipcRenderer.invoke('sync:disable'),
+  syncNow: () => ipcRenderer.invoke('sync:now'),
+  onSync: (cb) => ipcRenderer.on('sync', (_e, type, payload) => cb(type, payload)),
 })

@@ -1,12 +1,12 @@
 {
   "name": "excalidraw-ray",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Excalidraw desktop com autosave e multi-projetos",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "check": "node tests/store.check.mjs",
+    "check": "node tests/store.check.mjs && node tests/sync.check.mjs",
     "check:spell": "electron tests/spellcheck.check.mjs",
     "dist": "electron-vite build && electron-builder --win",
     "build:web": "vite build --config vite.config.web.mjs --mode web",

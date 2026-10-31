@@ -3,6 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
 import * as store from './store'
+import * as sync from './sync'
 
 if (process.env.RAY_TEST_DIR) { // instância isolada p/ testes: não briga com o app instalado nem toca nos projetos reais
   app.setPath('userData', path.join(process.env.RAY_TEST_DIR, 'userData'))
@@ -27,10 +28,15 @@ function createWindow() {
     if (!flushed) { // dá 1.5s pro renderer salvar o autosave pendente
       e.preventDefault()
       win.webContents.send('flush')
+      let closing = false
       const done = () => {
         ipcMain.removeListener('flushed', done)
         clearTimeout(t)
-        if (!flushed) { flushed = true; win.close() }
+        if (closing) return
+        closing = true
+        // sobe o que falta pra nuvem antes de fechar (no máx 4s; o que não subir vai no próximo início)
+        const fim = () => { if (!flushed) { flushed = true; win.close() } }
+        Promise.race([sync.syncNow(), new Promise((r) => setTimeout(r, 4000))]).finally(fim)
       }
       const t = setTimeout(done, 1500)
       ipcMain.once('flushed', done)
@@ -123,17 +129,23 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   store.init({ dir: process.env.RAY_TEST_DIR ? path.join(process.env.RAY_TEST_DIR, 'docs') : path.join(app.getPath('documents'), 'ExcalidrawRay'), trash: (f) => shell.trashItem(f) })
   ipcMain.handle('projects:list', () => store.list())
-  ipcMain.handle('projects:create', (_e, name) => store.create(name))
+  ipcMain.handle('projects:create', (_e, name) => { const id = store.create(name); sync.localCreated(id); return id })
   ipcMain.handle('projects:load', (_e, id) => store.load(id))
-  ipcMain.handle('projects:save', (_e, id, json) => store.save(id, json))
-  ipcMain.handle('projects:saveThumb', (_e, id, dataURL) => store.saveThumb(id, dataURL))
+  ipcMain.handle('projects:save', async (_e, id, json) => { await store.save(id, json); sync.localSaved(id, json) })
+  ipcMain.handle('projects:saveThumb', (_e, id, dataURL) => { store.saveThumb(id, dataURL); sync.localThumb(id) })
   ipcMain.handle('projects:thumb', (_e, id) => store.thumb(id))
-  ipcMain.handle('projects:rename', (_e, id, name) => store.rename(id, name))
-  ipcMain.handle('projects:delete', (_e, id) => store.remove(id))
+  ipcMain.handle('projects:rename', (_e, id, name) => { store.rename(id, name); sync.localRenamed(id) })
+  ipcMain.handle('projects:delete', async (_e, id) => { await store.remove(id); sync.localRemoved(id) })
   ipcMain.handle('projects:last', () => store.getLast())
   ipcMain.handle('projects:setLast', (_e, id) => store.setLast(id))
   ipcMain.handle('projects:openFolder', () => shell.openPath(store.dir()))
   ipcMain.handle('update:run', () => runUpdate())
+  ipcMain.handle('sync:get', () => sync.config())
+  ipcMain.handle('sync:enable', (_e, cfg) => sync.enable(cfg))
+  ipcMain.handle('sync:disable', () => sync.disable())
+  ipcMain.handle('sync:now', () => sync.syncNow())
+  sync.init({ dir: store.dir(), store, notify: (type, payload) => mainWin?.webContents.send('sync', type, payload) })
+  app.on('browser-window-focus', () => sync.syncNow()) // voltou pro PC: puxa o que mudou no celular
   mainWin = createWindow()
   checkUpdate(mainWin)
 })

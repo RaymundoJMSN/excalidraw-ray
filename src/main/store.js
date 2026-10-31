@@ -45,6 +45,15 @@ export function create(name) {
   return id
 }
 
+// projeto vindo da nuvem (sync): usa o id remoto como id local; não mexe em "last"
+export function createFrom(id, name, json) {
+  JSON.parse(json)
+  fs.writeFileSync(sceneFile(id), json)
+  const s = readState()
+  s.projects[id] = { name }
+  writeState(s)
+}
+
 export function load(id) {
   try { return fs.readFileSync(sceneFile(id), 'utf8') } catch { return null }
 }

@@ -13,9 +13,9 @@ import assert from 'node:assert'
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const PUB = path.join(ROOT, 'public')
-let DATA = path.join(ROOT, 'data') // check() repõe pra um tmpdir
+let DATA = process.env.RAY_DATA ?? path.join(ROOT, 'data') // check() repõe pra um tmpdir
 const MAX_BODY = 20 * 1024 * 1024 // cenas com imagens embutidas
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf': 'font/ttf' }
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.webmanifest': 'application/manifest+json' }
 const ID = /^[a-zA-Z0-9-]{8,40}$/
 const USER = /^[a-z0-9-]{1,30}$/
 
@@ -102,7 +102,9 @@ async function handleApi(req, res, url) {
 
     if (isThumb) {
       if (req.method === 'GET') {
-        try { res.writeHead(200, { 'Content-Type': 'text/plain' }).end(await readFile(thumbFile(id), 'utf8')) } catch { res.writeHead(404).end() }
+        let t // lê antes do writeHead: thumb inexistente derrubava o processo (headers já enviados)
+        try { t = await readFile(thumbFile(id), 'utf8') } catch { res.writeHead(404).end(); return }
+        res.writeHead(200, { 'Content-Type': 'text/plain' }).end(t)
       } else if (readOnly) res.writeHead(403).end()
       else if (req.method === 'PUT' || req.method === 'POST') {
         const raw = await readBody(req, res); if (raw === null) return
@@ -113,10 +115,14 @@ async function handleApi(req, res, url) {
       return
     }
 
+    if (req.method === 'GET' && url.searchParams.has('meta')) { // poll leve: só a versão, sem baixar a cena
+      json(res, 200, { updatedAt: meta.updatedAt ?? 0, name: meta.name })
+      return
+    }
     if (req.method === 'GET') {
       try {
         const scene = JSON.parse(await readFile(sceneFile(id), 'utf8'))
-        json(res, 200, { readOnly, name: meta.name, viewId: readOnly ? undefined : meta.viewId, scene })
+        json(res, 200, { readOnly, name: meta.name, viewId: readOnly ? undefined : meta.viewId, updatedAt: meta.updatedAt ?? 0, scene })
       } catch { res.writeHead(404).end() }
       return
     }
@@ -129,9 +135,9 @@ async function handleApi(req, res, url) {
       const tmp = f + '.' + crypto.randomUUID() + '.tmp' // tmp único: PUTs concorrentes não se corrompem
       await writeFile(tmp, raw)
       await rename(tmp, f) // escrita atômica
-      meta.updatedAt = Date.now()
+      meta.updatedAt = Math.max(Date.now(), (meta.updatedAt ?? 0) + 1) // estritamente crescente: clientes comparam versões
       writeIndex(idx)
-      res.writeHead(204).end()
+      json(res, 200, { updatedAt: meta.updatedAt })
     } else if (req.method === 'PATCH') {
       const raw = await readBody(req, res); if (raw === null) return
       try { meta.name = String(JSON.parse(raw).name).slice(0, 80) } catch { res.writeHead(400).end(); return }
@@ -192,7 +198,11 @@ async function check() {
   assert.deepEqual(await fetch(`${base}/api/u/outro/scenes`).then(j), [], 'outro usuário não vê')
 
   const scene = { type: 'excalidraw', version: 2, elements: [{ type: 'rectangle', id: 'r1' }], appState: {}, files: {} }
-  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: JSON.stringify(scene) })).status, 204, 'PUT ok')
+  const put = await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: JSON.stringify(scene) })
+  assert.equal(put.status, 200, 'PUT ok')
+  const { updatedAt } = await put.json()
+  assert.ok(updatedAt > 0, 'PUT devolve updatedAt')
+  assert.equal((await fetch(`${base}/api/scene/${id}?meta=1`).then(j)).updatedAt, updatedAt, 'meta devolve updatedAt')
   const got = await fetch(`${base}/api/scene/${id}`).then(j)
   assert.equal(got.readOnly, false, 'edit id não é readOnly')
   assert.deepEqual(got.scene, scene, 'round-trip')
@@ -204,8 +214,9 @@ async function check() {
   assert.equal(view.viewId, undefined, 'viewId não vaza na resposta view')
   assert.equal((await fetch(`${base}/api/scene/${viewId}`, { method: 'PUT', body: JSON.stringify(scene) })).status, 403, 'viewId nunca escreve')
 
-  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'POST', body: JSON.stringify(scene) })).status, 204, 'POST alias de PUT (sendBeacon)')
+  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'POST', body: JSON.stringify(scene) })).status, 200, 'POST alias de PUT (sendBeacon)')
 
+  assert.equal((await fetch(`${base}/api/scene/${id}/thumb`)).status, 404, 'thumb inexistente 404 (sem derrubar)')
   assert.equal((await fetch(`${base}/api/scene/${id}/thumb`, { method: 'PUT', body: 'data:image/webp;base64,xyz' })).status, 204, 'thumb PUT')
   assert.equal(await fetch(`${base}/api/scene/${id}/thumb`).then((r) => r.text()), 'data:image/webp;base64,xyz', 'thumb round-trip')
   assert.equal(await fetch(`${base}/api/scene/${viewId}/thumb`).then((r) => r.status), 200, 'thumb legível pelo viewId')

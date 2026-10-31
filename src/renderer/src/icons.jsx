@@ -3,3 +3,4 @@ export const IconNew = () => (<svg {...p}><rect x="3" y="3" width="18" height="1
 export const IconProjects = () => (<svg {...p}><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>)
 export const IconFolderOpen = () => (<svg {...p}><path d="M5 19l2.5-7H22l-2.5 7z" /><path d="M19.5 12V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2v12" /></svg>)
 export const IconShare = () => (<svg {...p}><circle cx="6" cy="12" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><line x1="8.7" y1="10.7" x2="15.3" y2="7.3" /><line x1="8.7" y1="13.3" x2="15.3" y2="16.7" /></svg>)
+export const IconCloud = () => (<svg {...p}><path d="M17.5 19H7a5 5 0 1 1 1.2-9.86A6 6 0 0 1 19.6 11 4 4 0 0 1 17.5 19z" /></svg>)

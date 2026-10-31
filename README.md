@@ -33,6 +33,15 @@ systemd `excalidraw-ray`, devilsworks) = `draw.raynathus.com.br`:
   `<iframe>` pra embed. Quem tem o link acessa (capability); viewId nunca escreve (403).
 - Visitante com link não precisa de login; raiz `/` pede login.
 - Sem colaboração ao vivo (edição simultânea = last-write-wins).
+- **App no celular (PWA)**: abrir o site no celular → menu do navegador → *Adicionar à tela inicial*
+  (precisa HTTPS). Cena aberta confere a cada 15s / ao voltar pro app se mudou em outro aparelho.
+
+## Sincronização PC ⇄ nuvem/celular
+
+No desktop: menu → **Sincronizar com a nuvem…** → mesmo nome usado no site/celular → Ativar.
+Projetos locais e da nuvem são mesclados; depois disso cada save sobe em ~2s e o app puxa mudanças
+a cada 20s e ao ganhar foco. Arquivos locais continuam em Documentos (funciona offline; sobe quando voltar a rede).
+Conflito na mesma cena = last-write-wins (edição local pendente vence). Estado em `Documentos\ExcalidrawRay\sync.json`.
 
 Deploy: `deploy/deploy.ps1`. Self-check: `node server/server.mjs --check`.
 
