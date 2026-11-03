@@ -342,10 +342,11 @@ async function check() {
   assert.equal(await fetch(`${base}/api/scene/${viewId}/thumb`).then((r) => r.status), 200, 'thumb legível pelo viewId')
   assert.equal((await fetch(`${base}/api/scene/${viewId}/thumb`, { method: 'PUT', body: 'x' })).status, 403, 'viewId não escreve thumb')
 
-  const grande = JSON.stringify({ ...scene, files: { f1: { dataURL: 'x'.repeat(25 * 1024 * 1024) } } }) // acima dos 20 MB antigos
-  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: grande })).status, 200, 'cena de 25 MB entra')
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: 'lixo' })).status, 400, 'json inválido 400')
   assert.deepEqual((await fetch(`${base}/api/scene/${id}`).then(j)).scene, scene, 'inválido não corrompe')
+  const grande = JSON.stringify({ ...scene, files: { f1: { dataURL: 'x'.repeat(25 * 1024 * 1024) } } }) // acima dos 20 MB antigos
+  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: grande })).status, 200, 'cena de 25 MB entra')
+  await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: JSON.stringify(scene) }) // volta a cena pequena pros próximos passos
 
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PATCH', body: JSON.stringify({ name: 'Novo nome' }) })).status, 204, 'rename')
   assert.equal((await fetch(`${base}/api/u/ray/scenes`, { headers: H }).then(j))[0].name, 'Novo nome')
