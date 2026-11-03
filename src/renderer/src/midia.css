@@ -9,12 +9,17 @@
 
 .ray-player { position: relative; width: 100%; height: 100%; background: #000; overflow: hidden; }
 .ray-player video, .ray-player audio { width: 100%; height: 100%; display: block; }
-.ray-player-barra {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 28px;
-  display: flex; align-items: center; gap: 6px; padding: 0 8px;
-  background: rgba(0, 0, 0, .65); color: #fff; font: 11px/1 system-ui, sans-serif;
-  pointer-events: auto;
+.ray-player-barra { /* font-size vem inline (renderMidia): tudo aqui é em, então cresce junto */
+  position: absolute; left: 0; right: 0; bottom: 0; height: 2.4em;
+  display: flex; align-items: center; gap: .5em; padding: 0 .7em;
+  background: rgba(0, 0, 0, .65); color: #fff; font-family: system-ui, sans-serif; line-height: 1;
 }
-.ray-player-barra button { background: none; border: 0; color: #fff; cursor: pointer; font-size: 12px; padding: 0 2px; line-height: 1; }
-.ray-player-barra input[type=range] { flex: 1; min-width: 0; height: 4px; margin: 0; accent-color: #a8a5ff; cursor: pointer; }
+.ray-player.audio .ray-player-barra { position: static; height: 100%; }
+/* o fundo da barra deixa o clique passar pro canvas: arrasta pelo ⠿, pelo relógio ou pelos vãos; só botão e barra de tempo pegam */
+.ray-player-barra { pointer-events: none; }
+.ray-player-barra button, .ray-player-barra input { pointer-events: auto; }
+.ray-player-barra .grip { opacity: .55; cursor: grab; }
+.ray-player-barra button { background: none; border: 0; color: #fff; cursor: pointer; font-size: 1.1em; padding: 0 .2em; line-height: 1; }
+.ray-player-barra input[type=range] { flex: 1; min-width: 0; height: .35em; margin: 0; appearance: none; background: rgba(255, 255, 255, .35); border-radius: 1em; cursor: pointer; }
+.ray-player-barra input[type=range]::-webkit-slider-thumb { appearance: none; width: 1em; height: 1em; border-radius: 50%; background: #a8a5ff; }
 .ray-player-barra span { white-space: nowrap; font-variant-numeric: tabular-nums; }

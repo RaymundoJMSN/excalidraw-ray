@@ -28,7 +28,7 @@ const thumbFile = (id) => path.join(DATA, 'scenes', id + '.thumb')
 // vídeo/áudio do canvas: sobe atrelado a uma cena editável (precisa do id de edição, como o PUT), fica em
 // media/<uuid>.<ext> e a cena guarda só o link. shortcut: apagar a cena não apaga a mídia; limpar quando pesar.
 let MEDIA_MAX = 500 * 1024 * 1024 // check() baixa pra testar o 413
-const MEDIA_MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.ogv': 'video/ogg', '.mkv': 'video/x-matroska', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.opus': 'audio/ogg', '.weba': 'audio/webm' }
+const MEDIA_MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.ogv': 'video/ogg', '.mkv': 'video/x-matroska', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.opus': 'audio/ogg', '.weba': 'audio/webm', '.mpeg': 'audio/mpeg', '.mpg': 'audio/mpeg', '.mpga': 'audio/mpeg' }
 const mediaFile = (nome) => path.join(DATA, 'media', path.basename(nome))
 
 async function servirMedia(req, res, nome) { // Range obrigatório: sem 206 o <video> não busca posição

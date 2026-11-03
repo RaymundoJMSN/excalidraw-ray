@@ -7,14 +7,14 @@ import { ray } from './storage'
 import './midia.css'
 
 const VIDEO = /\.(mp4|m4v|webm|mov|ogv|mkv)$/i
-const AUDIO = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/i
+const AUDIO = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|mpeg|mpg|mpga)$/i // .mpeg: MP3 renomeado é comum
 export const ehMidia = (f) => /^(video|audio)\//.test(f.type) || VIDEO.test(f.name) || AUDIO.test(f.name)
 const ehAudio = (f) => f.type.startsWith('audio/') || AUDIO.test(f.name)
 export const tipoMidia = (link) => (AUDIO.test(link) ? 'audio' : VIDEO.test(link) ? 'video' : null)
-export const semBorda = (els) => (els ?? []).map((e) => (e.type === 'embeddable' && tipoMidia(e.link ?? '') && e.strokeColor !== 'transparent' ? { ...e, strokeColor: 'transparent' } : e))
+export const semBorda = (els) => (els ?? []).map((e) => (e.type === 'embeddable' && ehLinkDeMidia(e.link ?? '') && e.strokeColor !== 'transparent' ? { ...e, strokeColor: 'transparent' } : e))
 
 async function medir(f) { // vídeo: proporção real cabendo em 480 de largura; áudio: só a barra de controles
-  if (ehAudio(f)) return { w: 320, h: 64 } // barra de 28 px embaixo + corpo pra arrastar
+  if (ehAudio(f)) return { w: 320, h: 44 } // áudio é a barra inteira; cresce ao redimensionar
   const url = URL.createObjectURL(f), v = document.createElement('video')
   try {
     v.preload = 'metadata'; v.src = url
@@ -50,17 +50,18 @@ export async function inserirMidia(api, arquivos, ponto, sceneId) {
 
 // Player próprio: controles nativos vivem no shadow DOM e não dá pra liberar só a barra deles — e o pacote exige
 // "ativar" o embed antes de qualquer clique. Aqui o corpo passa o clique pro canvas (midia.css) e a barra funciona sempre.
-function Player({ src, audio }) {
+function Player({ src, audio, fonte }) {
   const ref = useRef(null)
   const [t, setT] = useState(0), [dur, setDur] = useState(0), [tocando, setTocando] = useState(false), [mudo, setMudo] = useState(false)
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   const Tag = audio ? 'audio' : 'video'
   return (
-    <div className="ray-player">
+    <div className={'ray-player' + (audio ? ' audio' : '')}>
       <Tag ref={ref} src={src} preload="metadata"
         onLoadedMetadata={() => setDur(ref.current.duration)} onTimeUpdate={() => setT(ref.current.currentTime)}
         onPlay={() => setTocando(true)} onPause={() => setTocando(false)} />
-      <div className="ray-player-barra" onPointerUp={(e) => e.target.blur?.()}>{/* sem foco: setas/Delete seguem sendo do canvas */}
+      <div className="ray-player-barra" style={{ fontSize: fonte }} onPointerUp={(e) => e.target.blur?.()}>{/* sem foco: setas/Delete seguem sendo do canvas */}
+        <span className="grip" title="Arraste por aqui">⠿</span>
         <button title={tocando ? 'Pausar' : 'Tocar'} onClick={() => (tocando ? ref.current.pause() : ref.current.play())}>{tocando ? '❚❚' : '▶'}</button>
         <input type="range" min={0} max={dur || 0} step={0.1} value={t} onChange={(e) => { ref.current.currentTime = +e.target.value; setT(+e.target.value) }} />
         <span>{fmt(t)}{dur ? ' / ' + fmt(dur) : ''}</span>
@@ -70,7 +71,15 @@ function Player({ src, audio }) {
   )
 }
 
-export function renderMidia(el) {
-  const t = tipoMidia(el.link ?? '')
-  return t ? <Player src={el.link} audio={t === 'audio'} /> : null // link comum segue no iframe do pacote
+export const ehLinkDeMidia = (link) => /^ray-media:\/\/|\/api\/media\//.test(link)
+
+export function renderMidia(el, appState) {
+  const link = el.link ?? ''
+  // extensão fora da lista mas link nosso continua mídia: no iframe do pacote o Chromium baixava o arquivo a cada abertura
+  const t = tipoMidia(link) ?? (ehLinkDeMidia(link) ? 'video' : null)
+  if (!t) return null
+  const z = appState?.zoom?.value ?? 1
+  // barra cresce com o elemento (como foto) mas nunca fica menor que ~30 px na tela; áudio é a barra inteira
+  const barra = t === 'audio' ? el.height : Math.min(Math.max(el.height * 0.11, 30 / z), el.height * 0.35)
+  return <Player src={link} audio={t === 'audio'} fonte={barra / 2.4} />
 }

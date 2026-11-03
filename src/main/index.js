@@ -10,7 +10,7 @@ import * as sync from './sync'
 // dá origem de verdade à URL — sem ele o Chromium aceita o 1º Range mas descarta o 2º (mp4 com moov no fim) e o <video>
 // morre com erro 4, mesmo com bytes e cabeçalhos certos (medido com um mp4 de 1 MB; o fixture pequeno nunca pedia o 2º)
 protocol.registerSchemesAsPrivileged([{ scheme: 'ray-media', privileges: { standard: true, stream: true, supportFetchAPI: true, corsEnabled: true, secure: true, bypassCSP: true } }])
-const MEDIA_MIME = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg', mkv: 'video/x-matroska', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg', weba: 'audio/webm' }
+const MEDIA_MIME = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg', mkv: 'video/x-matroska', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg', weba: 'audio/webm', mpeg: 'audio/mpeg', mpg: 'audio/mpeg', mpga: 'audio/mpeg' }
 
 if (process.env.RAY_TEST_DIR) { // instância isolada p/ testes: não briga com o app instalado nem toca nos projetos reais
   app.setPath('userData', path.join(process.env.RAY_TEST_DIR, 'userData'))
@@ -169,7 +169,9 @@ app.whenReady().then(() => {
       headers: { 'Content-Type': MEDIA_MIME[path.extname(f).slice(1)] ?? 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', 'Content-Length': String(end - start + 1), ...(m && { 'Content-Range': `bytes ${start}-${end}/${size}` }) },
     })
   })
+  // mídia nossa que o Chromium não renderize inline viraria "salvar como" a cada abertura (aconteceu com um .mpeg no iframe)
   mainWin = createWindow()
+  mainWin.webContents.session.on('will-download', (e, item) => { if (item.getURL().startsWith('ray-media://')) e.preventDefault() })
   checkUpdate(mainWin)
 })
 app.on('window-all-closed', () => app.quit())
