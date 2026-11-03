@@ -95,6 +95,20 @@ export async function remove(id) {
   }
 }
 
+// ---- mídia (vídeo/áudio do canvas): arquivo copiado pra media/, a cena guarda só o nome
+const mediaDir = () => path.join(DIR, 'media')
+export const mediaPath = (nome) => path.join(mediaDir(), path.basename(nome)) // basename: nada de ../ vindo da URL
+
+export async function saveMedia(nome, origem) { // origem = caminho do arquivo (copia) ou bytes
+  const ext = (path.extname(nome).toLowerCase().match(/^\.[a-z0-9]{1,8}$/) ?? [''])[0]
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + ext
+  await fsp.mkdir(mediaDir(), { recursive: true })
+  if (typeof origem === 'string') await fsp.copyFile(origem, mediaPath(id))
+  else await fsp.writeFile(mediaPath(id), Buffer.from(origem))
+  return id
+}
+// shortcut: apagar projeto não apaga a mídia dele (a mesma mídia pode estar em outro projeto); limpar quando pesar
+
 export function getLast() { return readState().last }
 export function setLast(id) { const s = readState(); s.last = id; writeState(s) }
 export const dir = () => DIR

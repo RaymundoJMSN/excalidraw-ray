@@ -5,6 +5,9 @@ Versão desktop instalável do [Excalidraw](https://github.com/excalidraw/excali
 - **Autosave** — tudo salvo automaticamente em `Documentos\ExcalidrawRay\` (arquivos `.excalidraw` padrão, abrem no excalidraw.com).
 - **Multi-projetos** — criar/alternar/renomear/excluir projetos pelo menu; sempre abre o último projeto usado.
 - **Menu limpo** — sem Excalidraw+, GitHub, Discord, Sign up, redes sociais.
+- **Vídeo e áudio no canvas** — arrasta ou cola mp4/webm/mov/mp3/wav/ogg… e vira um player (clica pra
+  selecionar, clica de novo pra dar play). O arquivo é copiado pra `Documentos\ExcalidrawRay\media\`
+  (na web, sobe pro servidor); a cena guarda só o link. `npm run check:midia` prova no Electron real.
 - Tema escuro por padrão, interface em pt-BR.
 
 Construído com `@excalidraw/excalidraw` (pacote oficial) + Electron + Vite. Não é fork do monorepo — usa o pacote npm, o que mantém atualizações fáceis (`npm update`).

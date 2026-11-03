@@ -4,7 +4,8 @@
 import http from 'node:http'
 import crypto from 'node:crypto'
 import { readFile, writeFile, rename, mkdir, copyFile, stat, readdir, unlink } from 'node:fs/promises'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, createReadStream, createWriteStream } from 'node:fs'
+import { pipeline } from 'node:stream/promises'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -23,6 +24,30 @@ const MAX_SCENES = 300 // por usuário — trava DoS de criação em loop
 const idxFile = () => path.join(DATA, 'index.json')
 const sceneFile = (id) => path.join(DATA, 'scenes', id + '.excalidraw')
 const thumbFile = (id) => path.join(DATA, 'scenes', id + '.thumb')
+
+// vídeo/áudio do canvas: sobe atrelado a uma cena editável (precisa do id de edição, como o PUT), fica em
+// media/<uuid>.<ext> e a cena guarda só o link. shortcut: apagar a cena não apaga a mídia; limpar quando pesar.
+let MEDIA_MAX = 500 * 1024 * 1024 // check() baixa pra testar o 413
+const MEDIA_MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.ogv': 'video/ogg', '.mkv': 'video/x-matroska', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.opus': 'audio/ogg', '.weba': 'audio/webm' }
+const mediaFile = (nome) => path.join(DATA, 'media', path.basename(nome))
+
+async function servirMedia(req, res, nome) { // Range obrigatório: sem 206 o <video> não busca posição
+  let size
+  try { size = (await stat(mediaFile(nome))).size } catch { res.writeHead(404).end(); return }
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '')
+  let start = 0, end = size - 1
+  if (m) {
+    start = m[1] ? +m[1] : Math.max(0, size - +m[2])
+    end = m[1] && m[2] ? Math.min(+m[2], size - 1) : size - 1
+    if (start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }).end(); return }
+  }
+  res.writeHead(m ? 206 : 200, {
+    'Content-Type': MEDIA_MIME[path.extname(nome)] ?? 'application/octet-stream', 'Accept-Ranges': 'bytes',
+    'Content-Length': end - start + 1, 'Cache-Control': 'public, max-age=31536000, immutable', // nome é uuid: nunca muda
+    ...(m && { 'Content-Range': `bytes ${start}-${end}/${size}` }),
+  })
+  createReadStream(mediaFile(nome), { start, end }).pipe(res)
+}
 
 function readIndex() {
   try { return JSON.parse(readFileSync(idxFile(), 'utf8')) } catch { return { scenes: {} } }
@@ -89,16 +114,41 @@ async function handleApi(req, res, url) {
     return
   }
 
-  m = url.pathname.match(/^\/api\/scene\/([^/]+)(\/thumb)?$/)
+  m = url.pathname.match(/^\/api\/media\/([0-9a-f-]+\.[a-z0-9]+)$/)
+  if (m) {
+    if (req.method === 'GET') await servirMedia(req, res, m[1])
+    else res.writeHead(405).end()
+    return
+  }
+
+  m = url.pathname.match(/^\/api\/scene\/([^/]+)(\/thumb|\/media)?$/)
   if (m) {
     const ref = m[1]
-    const isThumb = !!m[2]
+    const isThumb = m[2] === '/thumb'
+    const isMedia = m[2] === '/media'
     if (!ID.test(ref.replace(/^v-/, ''))) { res.writeHead(404).end(); return }
     const viewOf = Object.entries(idx.scenes).find(([, s]) => s.viewId === ref)?.[0]
     const id = idx.scenes[ref] ? ref : viewOf
     const meta = idx.scenes[id]
     if (!meta) { res.writeHead(404).end(); return }
     const readOnly = !idx.scenes[ref] // chegou pelo viewId
+
+    if (isMedia) {
+      if (readOnly) { res.writeHead(403).end(); return }
+      if (req.method !== 'POST') { res.writeHead(405).end(); return }
+      const ext = path.extname(url.searchParams.get('nome') ?? '').toLowerCase()
+      if (!MEDIA_MIME[ext]) { res.writeHead(415).end('tipo não aceito'); return }
+      const len = Number(req.headers['content-length'])
+      if (!len) { res.writeHead(411).end(); return } // sem tamanho não dá pra barrar antes de gravar
+      if (len > MEDIA_MAX) { res.writeHead(413).end(); return }
+      const nome = crypto.randomUUID() + ext
+      await mkdir(path.join(DATA, 'media'), { recursive: true })
+      const tmp = mediaFile(nome) + '.tmp'
+      try { await pipeline(req, createWriteStream(tmp)); await rename(tmp, mediaFile(nome)) } // streaming: nada de 500 MB em memória
+      catch (e) { await unlink(tmp).catch(() => {}); throw e }
+      json(res, 200, { url: '/api/media/' + nome })
+      return
+    }
 
     if (isThumb) {
       if (req.method === 'GET') {
@@ -231,6 +281,30 @@ async function check() {
   assert.equal((await fetch(`${base}/api/u/Traversal..%2F/scenes`)).status, 400, 'usuário inválido 400')
   assert.equal((await fetch(`${base}/api/scene/..%2F..%2Fetc`)).status, 404, 'id inválido 404')
   assert.equal((await fetch(`${base}/%2e%2e/%2e%2e/etc/passwd`)).status, 404, 'traversal estático 404')
+
+  // mídia: upload atrelado à cena editável; GET com Range (vídeo buscando posição)
+  const bytes = Buffer.from('0123456789abcdef')
+  const up = (ref, nome, body = bytes) => fetch(`${base}/api/scene/${ref}/media?nome=${nome}`, { method: 'POST', body })
+  assert.equal((await up(viewId, 'a.mp4')).status, 403, 'viewId não sobe mídia')
+  assert.equal((await up(id, 'a.exe')).status, 415, 'extensão fora da lista')
+  MEDIA_MAX = 8
+  assert.equal((await up(id, 'a.mp4')).status, 413, 'maior que o limite')
+  MEDIA_MAX = 500 * 1024 * 1024
+  const { url: murl } = await up(id, 'Filme.MP4').then(j)
+  assert.match(murl, /^\/api\/media\/[0-9a-f-]+\.mp4$/, 'url com uuid + extensão minúscula')
+  const g = await fetch(base + murl)
+  assert.equal(g.status, 200)
+  assert.equal(g.headers.get('content-type'), 'video/mp4')
+  assert.equal(Buffer.compare(Buffer.from(await g.arrayBuffer()), bytes), 0, 'round-trip dos bytes')
+  const rg = await fetch(base + murl, { headers: { Range: 'bytes=4-7' } })
+  assert.equal(rg.status, 206)
+  assert.equal(rg.headers.get('content-range'), 'bytes 4-7/16')
+  assert.equal(await rg.text(), '4567', 'range do meio')
+  assert.equal(await fetch(base + murl, { headers: { Range: 'bytes=-3' } }).then((r) => r.text()), 'def', 'range sufixo')
+  assert.equal(await fetch(base + murl, { headers: { Range: 'bytes=14-99' } }).then((r) => r.text()), 'ef', 'fim além do arquivo é cortado')
+  assert.equal((await fetch(base + murl, { headers: { Range: 'bytes=99-' } })).status, 416)
+  assert.equal((await fetch(`${base}/api/media/nao-existe.mp4`)).status, 404)
+  assert.equal((await fetch(`${base}/api/media/..%2Findex.json`)).status, 404, 'nome fora do padrão')
 
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'DELETE' })).status, 204, 'delete')
   assert.deepEqual(await fetch(`${base}/api/u/ray/scenes`).then(j), [], 'lista vazia após delete')

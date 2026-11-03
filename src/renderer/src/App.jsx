@@ -5,6 +5,7 @@ import { ray, isWeb, sceneMeta, LS } from './storage'
 import { IconNew, IconProjects, IconFolderOpen, IconShare, IconCloud } from './icons'
 import { instalarTraducoes } from './i18n'
 import { instalarMenuDados } from './dados'
+import { ehMidia, inserirMidia, renderMidia } from './midia'
 import ProjectsPanel from './ProjectsPanel'
 import ShareDialog from './ShareDialog'
 import Login from './Login'
@@ -137,14 +138,25 @@ export default function App() {
   }, [user])
 
   useEffect(() => {
-    // colou uma foto → troca pra seleção (tecla 1) pra já poder mover/redimensionar
+    // vídeo/áudio: capturado na janela, ANTES do handler do pacote (que recusaria o arquivo)
+    const midia = (e, lista) => {
+      const fs = apiRef.current && !sceneMeta[idRef.current]?.readOnly ? [...(lista ?? [])].filter(ehMidia) : []
+      if (!fs.length) return false
+      e.preventDefault(); e.stopPropagation()
+      inserirMidia(apiRef.current, fs, 'clientX' in e ? { clientX: e.clientX, clientY: e.clientY } : null, idRef.current)
+      return true
+    }
+    const onDrop = (e) => midia(e, e.dataTransfer?.files)
     const onPaste = (e) => {
+      if (midia(e, e.clipboardData?.files)) return
+      // colou uma foto → troca pra seleção (tecla 1) pra já poder mover/redimensionar
       if ([...(e.clipboardData?.items ?? [])].some((i) => i.type.startsWith('image/'))) {
         setTimeout(() => apiRef.current?.setActiveTool({ type: 'selection' }), 300)
       }
     }
-    window.addEventListener('paste', onPaste)
-    return () => window.removeEventListener('paste', onPaste)
+    window.addEventListener('drop', onDrop, true)
+    window.addEventListener('paste', onPaste, true)
+    return () => { window.removeEventListener('drop', onDrop, true); window.removeEventListener('paste', onPaste, true) }
   }, [])
 
   useEffect(() => {
@@ -230,7 +242,8 @@ export default function App() {
       <Excalidraw key={current.id} initialData={current.data} langCode="pt-BR" onChange={onChange}
         viewModeEnabled={readOnly || undefined}
         validateEmbeddable // qualquer URL pode ser embedada (a whitelist do pacote barrava quase tudo)
-        excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray } }}
+        renderEmbeddable={renderMidia} // link de vídeo/áudio vira <video>/<audio>; o resto segue no iframe
+        excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray, inserirMidia } }}
         UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         renderTopRightUI={() => updateVersion && (
           <button className="ray-update" title={`Atualizar para a versão ${updateVersion} (baixa e reinstala sozinho)`}

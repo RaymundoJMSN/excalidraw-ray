@@ -44,6 +44,7 @@ const ls = {
   },
   async last() { return this._index().last },
   async setLast(id) { const i = this._index(); i.last = id; this._write(i) },
+  async saveMedia(f) { return URL.createObjectURL(f) + '#' + f.name }, // só preview dev: vive até fechar a aba
   async openFolder() {},
   onFlush() {},
   flushed() {},
@@ -105,6 +106,11 @@ const web = {
   },
   async rename(id, name) { await fetch(`/api/scene/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }) },
   async remove(id) { await fetch(`/api/scene/${id}`, { method: 'DELETE' }) },
+  async saveMedia(f, sceneId) { // vídeo/áudio sobe inteiro pro servidor, a cena guarda só o link
+    const r = await fetch(`/api/scene/${sceneId}/media?nome=${encodeURIComponent(f.name)}`, { method: 'POST', body: f })
+    if (!r.ok) throw new Error('upload falhou: ' + r.status)
+    return (await r.json()).url
+  },
   async last() { return LS['rayLast:' + this.user()] ?? null },
   async setLast(id) {
     try { // replaceState também pode lançar em iframe sandbox

@@ -8,6 +8,7 @@
     "build": "electron-vite build",
     "check": "node tests/store.check.mjs && node tests/sync.check.mjs",
     "check:spell": "electron tests/spellcheck.check.mjs",
+    "check:midia": "node tests/midia.check.mjs",
     "dist": "electron-vite build && electron-builder --win",
     "build:web": "vite build --config vite.config.web.mjs --mode web",
     "server": "node server/server.mjs"

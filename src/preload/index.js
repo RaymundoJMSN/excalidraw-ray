@@ -1,5 +1,7 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 contextBridge.exposeInMainWorld('ray', {
+  // arquivo com caminho real (arrastado do Explorer) é copiado pelo main; colado sem caminho vai em bytes
+  saveMedia: async (f) => ipcRenderer.invoke('media:save', f.name, webUtils.getPathForFile(f) || await f.arrayBuffer()),
   list: () => ipcRenderer.invoke('projects:list'),
   create: (name) => ipcRenderer.invoke('projects:create', name),
   load: (id) => ipcRenderer.invoke('projects:load', id),
