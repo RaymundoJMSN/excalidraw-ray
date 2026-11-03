@@ -60,7 +60,15 @@ try {
     const video = document.querySelector('.excalidraw__embeddable-container video')
     if (video && video.readyState < 1) await new Promise((ok) => { video.onloadedmetadata = ok; video.onerror = ok; setTimeout(ok, 5000) })
     await new Promise((r) => setTimeout(r, 1500)) // autosave (800 ms)
+    // como foto: clique no corpo cai no canvas, clique na barra cai no botão; só o vídeo selecionado → popup de link escondido
+    const r = document.querySelector('.ray-player')?.getBoundingClientRect()
+    const corpo = r && document.elementFromPoint(r.left + r.width / 2, r.top + 10)?.tagName
+    const botao = r && document.elementFromPoint(r.left + 14, r.bottom - 14)?.tagName
+    // popup de link do pacote (markup real: div.excalidraw-hyperlinkContainer > a.excalidraw-hyperlinkContainer-link[href]):
+    // o pacote só o abre num clique de mouse de verdade, então a regra CSS é provada com o mesmo markup injetado
+    const fakePopup = (href) => { const d = document.createElement('div'); d.className = 'excalidraw-hyperlinkContainer'; d.innerHTML = '<a class="excalidraw-hyperlinkContainer-link" href="' + href + '">x</a>'; document.body.appendChild(d); return getComputedStyle(d).display }
     return {
+      corpo, botao, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
       els: embeds().map((e) => ({ link: e.link, w: e.width, h: e.height })),
       temVideo: !!video, temAudio: !!document.querySelector('.excalidraw__embeddable-container audio'),
       ready: video?.readyState ?? 0, duracao: video?.duration ?? 0,
@@ -74,8 +82,11 @@ try {
   assert.match(video?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp4$/)
   assert.deepEqual([video.w, video.h], [480, 360], 'tamanho segue a proporção 4:3 do fixture')
   assert.match(audio?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp3$/)
-  assert.deepEqual([audio.w, audio.h], [320, 54], 'áudio = barra')
+  assert.deepEqual([audio.w, audio.h], [320, 64], 'áudio = barra + corpo pra arrastar')
   assert.ok(out.temVideo && out.temAudio, 'renderEmbeddable desenhou <video> e <audio>')
+  assert.equal(out.corpo, 'CANVAS', 'clique no corpo do vídeo vai pro canvas (seleciona/arrasta como foto)')
+  assert.equal(out.botao, 'BUTTON', 'barra do player recebe o clique sem ativar nada')
+  assert.deepEqual([out.popupMidia, out.popupWeb, out.popupSite], ['none', 'none', 'flex'], 'popup de link escondido só pra mídia (desktop e web); o do pacote é flex')
   assert.ok(out.ready >= 1 && out.duracao > 7.5, 'vídeo carregou metadados pelo ray-media:// (2º Range aceito)')
   assert.equal(mp4?.status, 206, 'o <video> pede Range e o esquema responde 206 (seek)')
   assert.match(cabecalhos['content-range'] ?? '', /^bytes \d+-\d+\/\d+$/)

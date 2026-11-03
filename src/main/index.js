@@ -28,8 +28,9 @@ function createWindow() {
     show: false, autoHideMenuBar: true, backgroundColor: '#121212',
     webPreferences: { preload: path.join(__dirname, '../preload/index.js') },
   })
-  if (s.maximized ?? true) win.maximize()
-  win.once('ready-to-show', () => win.show())
+  const teste = !!process.env.RAY_TEST_DIR // janela de teste fica escondida: não rouba a tela de quem está usando o PC
+  if ((s.maximized ?? true) && !teste) win.maximize() // maximize() também mostra a janela
+  win.once('ready-to-show', () => { if (!teste) win.show() })
   win.on('close', (e) => {
     try { fs.writeFileSync(winStateFile(), JSON.stringify({ ...win.getNormalBounds(), maximized: win.isMaximized() })) } catch {}
     if (!flushed) { // dá 1.5s pro renderer salvar o autosave pendente

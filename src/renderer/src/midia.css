@@ -1,0 +1,18 @@
+/* Vídeo/áudio no canvas se comporta como foto: o corpo deixa o clique passar pro canvas (seleciona, arrasta,
+   redimensiona) e só a barra do player recebe eventos — sem o "clique para interagir" do pacote. */
+.excalidraw__embeddable-container:has(.ray-player) .excalidraw__embeddable-container__inner { pointer-events: none !important; }
+.excalidraw__embeddable-container:has(.ray-player) .excalidraw__embeddable-hint { display: none; }
+/* o popup de link do pacote (ray-media://… com editar/abrir) não faz sentido pra mídia */
+.excalidraw-hyperlinkContainer:has(a[href^="ray-media://"], a[href*="/api/media/"]) { display: none; }
+
+.ray-player { position: relative; width: 100%; height: 100%; background: #000; overflow: hidden; }
+.ray-player video, .ray-player audio { width: 100%; height: 100%; display: block; }
+.ray-player-barra {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 28px;
+  display: flex; align-items: center; gap: 6px; padding: 0 8px;
+  background: rgba(0, 0, 0, .65); color: #fff; font: 11px/1 system-ui, sans-serif;
+  pointer-events: auto;
+}
+.ray-player-barra button { background: none; border: 0; color: #fff; cursor: pointer; font-size: 12px; padding: 0 2px; line-height: 1; }
+.ray-player-barra input[type=range] { flex: 1; min-width: 0; height: 4px; margin: 0; accent-color: #a8a5ff; cursor: pointer; }
+.ray-player-barra span { white-space: nowrap; font-variant-numeric: tabular-nums; }

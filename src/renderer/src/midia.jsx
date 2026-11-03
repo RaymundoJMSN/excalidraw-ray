@@ -1,8 +1,10 @@
 // Vídeo e áudio no canvas. O pacote só aceita imagem, então a mídia vira elemento "embeddable"
 // cujo link aponta pro arquivo guardado (ray-media:// no desktop, /api/media/ na web) e o
 // renderEmbeddable desenha <video>/<audio> no lugar do iframe.
+import { useRef, useState } from 'react'
 import { restoreElements, CaptureUpdateAction, viewportCoordsToSceneCoords } from '@excalidraw/excalidraw'
 import { ray } from './storage'
+import './midia.css'
 
 const VIDEO = /\.(mp4|m4v|webm|mov|ogv|mkv)$/i
 const AUDIO = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/i
@@ -11,7 +13,7 @@ const ehAudio = (f) => f.type.startsWith('audio/') || AUDIO.test(f.name)
 export const tipoMidia = (link) => (AUDIO.test(link) ? 'audio' : VIDEO.test(link) ? 'video' : null)
 
 async function medir(f) { // vídeo: proporção real cabendo em 480 de largura; áudio: só a barra de controles
-  if (ehAudio(f)) return { w: 320, h: 54 }
+  if (ehAudio(f)) return { w: 320, h: 64 } // barra de 28 px embaixo + corpo pra arrastar
   const url = URL.createObjectURL(f), v = document.createElement('video')
   try {
     v.preload = 'metadata'; v.src = url
@@ -44,9 +46,29 @@ export async function inserirMidia(api, arquivos, ponto, sceneId) {
   api.setActiveTool({ type: 'selection' })
 }
 
+// Player próprio: controles nativos vivem no shadow DOM e não dá pra liberar só a barra deles — e o pacote exige
+// "ativar" o embed antes de qualquer clique. Aqui o corpo passa o clique pro canvas (midia.css) e a barra funciona sempre.
+function Player({ src, audio }) {
+  const ref = useRef(null)
+  const [t, setT] = useState(0), [dur, setDur] = useState(0), [tocando, setTocando] = useState(false), [mudo, setMudo] = useState(false)
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+  const Tag = audio ? 'audio' : 'video'
+  return (
+    <div className="ray-player">
+      <Tag ref={ref} src={src} preload="metadata"
+        onLoadedMetadata={() => setDur(ref.current.duration)} onTimeUpdate={() => setT(ref.current.currentTime)}
+        onPlay={() => setTocando(true)} onPause={() => setTocando(false)} />
+      <div className="ray-player-barra" onPointerUp={(e) => e.target.blur?.()}>{/* sem foco: setas/Delete seguem sendo do canvas */}
+        <button title={tocando ? 'Pausar' : 'Tocar'} onClick={() => (tocando ? ref.current.pause() : ref.current.play())}>{tocando ? '❚❚' : '▶'}</button>
+        <input type="range" min={0} max={dur || 0} step={0.1} value={t} onChange={(e) => { ref.current.currentTime = +e.target.value; setT(+e.target.value) }} />
+        <span>{fmt(t)}{dur ? ' / ' + fmt(dur) : ''}</span>
+        <button title={mudo ? 'Som' : 'Mudo'} onClick={() => { ref.current.muted = !mudo; setMudo(!mudo) }}>{mudo ? '🔇' : '🔊'}</button>
+      </div>
+    </div>
+  )
+}
+
 export function renderMidia(el) {
   const t = tipoMidia(el.link ?? '')
-  if (t === 'video') return <video src={el.link} controls preload="metadata" style={{ width: '100%', height: '100%', display: 'block', background: '#000' }} />
-  if (t === 'audio') return <audio src={el.link} controls preload="metadata" style={{ width: '100%' }} />
-  return null // link comum segue no iframe do pacote
+  return t ? <Player src={el.link} audio={t === 'audio'} /> : null // link comum segue no iframe do pacote
 }
