@@ -7,12 +7,20 @@
 /* o popup de link do pacote (ray-media://… com editar/abrir) não faz sentido pra mídia */
 .excalidraw-hyperlinkContainer:has(a[href^="ray-media://"], a[href*="/api/media/"]) { display: none; }
 
-.ray-player { position: relative; width: 100%; height: 100%; background: #000; overflow: hidden; }
+/* overflow visível pra tapa do ícone de link ficar fora da caixa */
+.excalidraw__embeddable-container:has(.ray-player) .excalidraw__embeddable-container__inner { overflow: visible !important; }
+.ray-player { position: relative; width: 100%; height: 100%; background: #000; }
+.ray-tapa { position: absolute; filter: var(--theme-filter); } /* mesmo filtro que o canvas usa no tema escuro */
+.ray-player:fullscreen { background: #000; }
+.ray-player:fullscreen .ray-tapa { display: none; }
+.ray-player:fullscreen .ray-player-barra { font-size: 18px !important; height: 44px; }
+.ray-player:fullscreen video { object-fit: contain; }
 .ray-player video, .ray-player audio { width: 100%; height: 100%; display: block; }
 .ray-player-barra { /* font-size vem inline (renderMidia): tudo aqui é em, então cresce junto */
   position: absolute; left: 0; right: 0; bottom: 0; height: 2.4em;
   display: flex; align-items: center; gap: .5em; padding: 0 .7em;
   background: rgba(0, 0, 0, .65); color: #fff; font-family: system-ui, sans-serif; line-height: 1;
+  overflow: hidden; /* o que não couber some em vez de vazar (o JS já esconde volume/relógio/pegador por largura) */
 }
 .ray-player.audio .ray-player-barra { position: static; height: 100%; }
 /* o fundo da barra deixa o clique passar pro canvas: arrasta pelo ⠿, pelo relógio ou pelos vãos; só botão e barra de tempo pegam */

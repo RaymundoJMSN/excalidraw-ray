@@ -14,7 +14,7 @@ export const tipoMidia = (link) => (AUDIO.test(link) ? 'audio' : VIDEO.test(link
 export const semBorda = (els) => (els ?? []).map((e) => (e.type === 'embeddable' && ehLinkDeMidia(e.link ?? '') && e.strokeColor !== 'transparent' ? { ...e, strokeColor: 'transparent' } : e))
 
 async function medir(f) { // vídeo: proporção real cabendo em 480 de largura; áudio: só a barra de controles
-  if (ehAudio(f)) return { w: 320, h: 44 } // áudio é a barra inteira; cresce ao redimensionar
+  if (ehAudio(f)) return { w: 400, h: 44 } // áudio é a barra inteira (400 = cabe o volume); cresce ao redimensionar
   const url = URL.createObjectURL(f), v = document.createElement('video')
   try {
     v.preload = 'metadata'; v.src = url
@@ -50,24 +50,26 @@ export async function inserirMidia(api, arquivos, ponto, sceneId) {
 
 // Player próprio: controles nativos vivem no shadow DOM e não dá pra liberar só a barra deles — e o pacote exige
 // "ativar" o embed antes de qualquer clique. Aqui o corpo passa o clique pro canvas (midia.css) e a barra funciona sempre.
-function Player({ src, audio, fonte }) {
-  const ref = useRef(null)
+function Player({ src, audio, fonte, em, tapa }) {
+  const ref = useRef(null), caixa = useRef(null)
   const [t, setT] = useState(0), [dur, setDur] = useState(0), [tocando, setTocando] = useState(false), [mudo, setMudo] = useState(false), [vol, setVol] = useState(1)
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   const Tag = audio ? 'audio' : 'video'
   return (
-    <div className={'ray-player' + (audio ? ' audio' : '')}>
+    <div className={'ray-player' + (audio ? ' audio' : '')} ref={caixa}>
+      {tapa && <span className="ray-tapa" style={tapa} />}
       <Tag ref={ref} src={src} preload="metadata"
         onLoadedMetadata={() => setDur(ref.current.duration)} onTimeUpdate={() => setT(ref.current.currentTime)}
         onPlay={() => setTocando(true)} onPause={() => setTocando(false)} />
       <div className="ray-player-barra" style={{ fontSize: fonte }} onPointerUp={(e) => e.target.blur?.()}>{/* sem foco: setas/Delete seguem sendo do canvas */}
-        <span className="grip" title="Arraste por aqui">⠿</span>
+        {em >= 10 && <span className="grip" title="Arraste por aqui">⠿</span>}
         <button title={tocando ? 'Pausar' : 'Tocar'} onClick={() => (tocando ? ref.current.pause() : ref.current.play())}>{tocando ? '❚❚' : '▶'}</button>
         <input type="range" min={0} max={dur || 0} step={0.1} value={t} onChange={(e) => { ref.current.currentTime = +e.target.value; setT(+e.target.value) }} />
-        <span>{fmt(t)}{dur ? ' / ' + fmt(dur) : ''}</span>
+        {em >= 13 && <span>{fmt(t)}{dur ? ' / ' + fmt(dur) : ''}</span>}
         <button title={mudo ? 'Som' : 'Mudo'} onClick={() => { ref.current.muted = !mudo; setMudo(!mudo) }}>{mudo || vol === 0 ? '🔇' : vol < 0.5 ? '🔉' : '🔊'}</button>
-        <input className="vol" type="range" min={0} max={1} step={0.05} value={vol} title="Volume"
-          onChange={(e) => { const v = +e.target.value; ref.current.volume = v; setVol(v); if (mudo && v > 0) { ref.current.muted = false; setMudo(false) } }} />
+        {em >= (audio ? 20 : 22) && <input className="vol" type="range" min={0} max={1} step={0.05} value={vol} title="Volume"
+          onChange={(e) => { const v = +e.target.value; ref.current.volume = v; setVol(v); if (mudo && v > 0) { ref.current.muted = false; setMudo(false) } }} />}
+        {!audio && <button className="cheia" title="Tela cheia (Esc sai)" onClick={() => (document.fullscreenElement ? document.exitFullscreen() : caixa.current.requestFullscreen())}>⛶</button>}
       </div>
     </div>
   )
@@ -83,5 +85,9 @@ export function renderMidia(el, appState) {
   const z = appState?.zoom?.value ?? 1
   // barra cresce com o elemento (como foto) mas nunca fica menor que ~30 px na tela; áudio é a barra inteira
   const barra = t === 'audio' ? el.height : Math.min(Math.max(el.height * 0.11, 30 / z), el.height * 0.35)
-  return <Player src={link} audio={t === 'audio'} fonte={barra / 2.4} />
+  const fonte = barra / 2.4
+  // o pacote desenha o ícone ↗ de link no canvas estático (14 px de tela, canto superior direito, sem como desligar):
+  // o container fica por cima desse canvas, então um quadrado da cor do fundo com o filtro do tema o esconde
+  const tapa = { left: el.width + 1 / z, top: -15 / z, width: 14 / z, height: 14 / z, background: appState?.viewBackgroundColor ?? '#fff' }
+  return <Player src={link} audio={t === 'audio'} fonte={fonte} em={el.width / fonte} tapa={tapa} />
 }

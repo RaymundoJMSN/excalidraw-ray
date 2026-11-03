@@ -75,11 +75,20 @@ try {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(sv, '0.3'); sv.dispatchEvent(new Event('input', { bubbles: true }))
     await new Promise((r) => setTimeout(r, 100))
     const volume = au.volume
+    const cheia = !!pv.querySelector('button.cheia'), cheiaAudio = !!document.querySelector('.ray-player.audio button.cheia')
+    const tapa = pv.querySelector('.ray-tapa'), tapaCss = tapa && { left: tapa.style.left, top: tapa.style.top, w: tapa.style.width }
+    // vídeo estreito: some volume e relógio, fica o play
+    const idV = embeds().find((e) => e.link.endsWith('.mp4')).id
+    api.updateScene({ elements: api.getSceneElements().map((e) => (e.id === idV ? { ...e, width: 120, height: 90 } : e)) })
+    await new Promise((r) => setTimeout(r, 400))
+    const estreito = { vol: !!pv.querySelector('input.vol'), relogio: !!pv.querySelector('.ray-player-barra span:not(.grip)'), play: !!pv.querySelector('button') }
+    api.updateScene({ elements: api.getSceneElements().map((e) => (e.id === idV ? { ...e, width: 480, height: 360 } : e)) }) // devolve o tamanho
+    await new Promise((r) => setTimeout(r, 300))
     // popup de link do pacote (markup real: div.excalidraw-hyperlinkContainer > a.excalidraw-hyperlinkContainer-link[href]):
     // o pacote só o abre num clique de mouse de verdade, então a regra CSS é provada com o mesmo markup injetado
     const fakePopup = (href) => { const d = document.createElement('div'); d.className = 'excalidraw-hyperlinkContainer'; d.innerHTML = '<a class="excalidraw-hyperlinkContainer-link" href="' + href + '">x</a>'; document.body.appendChild(d); return getComputedStyle(d).display }
     return {
-      larguras, fonteVideo, corpo, botao, grip, volume, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
+      larguras, fonteVideo, corpo, botao, grip, volume, cheia, cheiaAudio, tapaCss, estreito, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
       els: embeds().map((e) => ({ link: e.link, w: e.width, h: e.height, traco: e.strokeColor, cantos: e.roundness })),
       temVideo: !!video, temAudio: !!document.querySelector('.excalidraw__embeddable-container audio'),
       ready: video?.readyState ?? 0, duracao: video?.duration ?? 0,
@@ -94,7 +103,7 @@ try {
   assert.deepEqual([video.w, video.h], [480, 360], 'tamanho segue a proporção 4:3 do fixture')
   assert.deepEqual([video.traco, video.cantos], ['transparent', null], 'sem borda nem cantos arredondados (como foto)')
   assert.match(audio?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp3$/)
-  assert.deepEqual([audio.w, audio.h], [320, 44], 'áudio = a barra inteira')
+  assert.deepEqual([audio.w, audio.h], [400, 44], 'áudio = a barra inteira, larga o bastante pro volume')
   assert.ok(out.temVideo && out.temAudio, 'renderEmbeddable desenhou <video> e <audio>')
   assert.equal(out.larguras[0], out.larguras[1], 'player cobre a caixa inteira (sem respiro do traço)')
   assert.ok(out.fonteVideo >= 30 / 2.4 && out.fonteVideo <= 40, `barra do vídeo escala com o elemento (fonte ${out.fonteVideo}px)`)
@@ -102,6 +111,9 @@ try {
   assert.equal(out.botao, 'BUTTON', 'barra do player recebe o clique sem ativar nada')
   assert.ok(out.grip.startsWith('CANVAS'), 'pegador ⠿ do áudio deixa o clique passar pro canvas (arrastar): ' + out.grip)
   assert.ok(Math.abs(out.volume - 0.3) < 0.01, 'slider de volume muda o volume do áudio: ' + out.volume)
+  assert.ok(out.cheia && !out.cheiaAudio, 'botão de tela cheia só no vídeo')
+  assert.deepEqual(out.tapaCss, { left: '481px', top: '-15px', w: '14px' }, 'tapa cobre o ícone de link (zoom 1, vídeo de 480)')
+  assert.deepEqual(out.estreito, { vol: false, relogio: false, play: true }, 'vídeo estreito esconde volume e relógio, mantém play')
   assert.deepEqual([out.popupMidia, out.popupWeb, out.popupSite], ['none', 'none', 'flex'], 'popup de link escondido só pra mídia (desktop e web); o do pacote é flex')
   assert.ok(out.ready >= 1 && out.duracao > 7.5, 'vídeo carregou metadados pelo ray-media:// (2º Range aceito)')
   assert.equal(mp4?.status, 206, 'o <video> pede Range e o esquema responde 206 (seek)')
