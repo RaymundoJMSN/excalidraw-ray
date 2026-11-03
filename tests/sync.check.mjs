@@ -23,19 +23,23 @@ try {
   const events = []
   sync.init({ dir: store.dir(), store, notify: (t, p) => events.push([t, p]) })
 
-  // celular já tem uma cena; PC tem um projeto local
-  const cel = await fetch(`${base}/api/u/ray/scenes`, { method: 'POST', body: JSON.stringify({ name: 'Do celular' }) }).then(j)
+  // celular entra na conta (cria) e já tem uma cena; PC tem um projeto local
+  const { token } = await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: 'segredo1' }) }).then(j)
+  const H = { headers: { Authorization: 'Bearer ' + token } }
+  const cel = await fetch(`${base}/api/u/ray/scenes`, { method: 'POST', ...H, body: JSON.stringify({ name: 'Do celular' }) }).then(j)
   await fetch(`${base}/api/scene/${cel.id}`, { method: 'PUT', body: scene([el('c1', 1)]) })
   const pc = store.create('Do PC')
   await store.save(pc, scene([el('p1', 1)])); sync.localSaved(pc, store.load(pc))
 
-  await assert.rejects(sync.enable({ user: 'Ray Inválido' }), 'nome inválido rejeita')
-  const cfg = await sync.enable({ user: 'ray', server: base })
+  await assert.rejects(sync.enable({ user: 'Ray Inválido', senha: '1234' }), 'nome inválido rejeita')
+  await assert.rejects(sync.enable({ user: 'ray', senha: 'errada1', server: base }), /senha errada/, 'senha errada rejeita')
+  assert.equal(sync.config().enabled, false, 'senha errada não liga nada')
+  const cfg = await sync.enable({ user: 'ray', senha: 'segredo1', server: base })
   assert.equal(cfg.enabled, true)
   assert.equal(cfg.error, null, 'sem erro: ' + cfg.error)
 
   // mescla: os dois lados têm os dois projetos
-  const remote = await fetch(`${base}/api/u/ray/scenes`).then(j)
+  const remote = await fetch(`${base}/api/u/ray/scenes`, H).then(j)
   assert.deepEqual(remote.map((s) => s.name).sort(), ['Do PC', 'Do celular'], 'nuvem tem os dois')
   assert.deepEqual(store.list().map((p) => p.name).sort(), ['Do PC', 'Do celular'], 'PC tem os dois')
   assert.equal(JSON.parse(store.load(cel.id)).elements[0].id, 'c1', 'cena do celular baixada')
@@ -61,7 +65,7 @@ try {
 
   // rename nos dois sentidos
   store.rename(pc, 'PC renomeado'); sync.localRenamed(pc); await sync.syncNow()
-  assert.equal((await fetch(`${base}/api/u/ray/scenes`).then(j)).find((s) => s.id === pcRemote).name, 'PC renomeado', 'rename subiu')
+  assert.equal((await fetch(`${base}/api/u/ray/scenes`, H).then(j)).find((s) => s.id === pcRemote).name, 'PC renomeado', 'rename subiu')
   await fetch(`${base}/api/scene/${cel.id}`, { method: 'PATCH', body: JSON.stringify({ name: 'Cel renomeado' }) })
   await sync.syncNow()
   assert.ok(store.list().some((p) => p.name === 'Cel renomeado'), 'rename desceu')

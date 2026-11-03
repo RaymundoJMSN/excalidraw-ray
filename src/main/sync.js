@@ -61,22 +61,27 @@ function schedule(ms) {
 }
 
 async function api(p, opts = {}) {
-  return fetch(S.server.replace(/\/+$/, '') + p, { ...opts, signal: AbortSignal.timeout(30000) })
+  const r = await fetch(S.server.replace(/\/+$/, '') + p, { ...opts, headers: { ...(S.token && { Authorization: 'Bearer ' + S.token }), ...opts.headers }, signal: AbortSignal.timeout(30000) })
+  if (r.status === 401) throw new Error('A conta não foi aceita pelo servidor (senha mudou?). Saia e entre de novo.')
+  return r
 }
 
-export async function enable({ user, server }) {
+export async function enable({ user, senha, server }) {
   user = String(user ?? '').trim().toLowerCase()
   server = String(server || DEFAULT_SERVER).trim().replace(/\/+$/, '')
   if (!USER.test(user)) throw new Error('Nome inválido (minúsculas, números e hífen)')
+  if (String(senha ?? '').length < 4) throw new Error('Senha com pelo menos 4 caracteres')
   if (!/^https?:\/\//.test(server)) throw new Error('Servidor deve começar com https://')
-  const prev = { user: S.user, server: S.server }
-  S.user = user; S.server = server
-  try {
-    const r = await api(`/api/u/${user}/scenes`)
-    if (!r.ok) throw new Error('servidor respondeu ' + r.status)
+  const prev = { user: S.user, server: S.server, token: S.token }
+  S.user = user; S.server = server; S.token = null
+  try { // entra (ou cria) a conta; o token fica no sync.json e vai como Bearer em toda chamada
+    const r = await fetch(server + '/api/entrar', { method: 'POST', body: JSON.stringify({ nome: user, senha }), signal: AbortSignal.timeout(30000) })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.error || (r.status === 429 ? 'muitas tentativas; espere 1 minuto' : 'servidor respondeu ' + r.status))
+    S.token = d.token
   } catch (e) {
     Object.assign(S, prev)
-    throw new Error('Não consegui falar com o servidor: ' + (e.message || e))
+    throw new Error(/senha|nome|tentativas|respondeu/.test(e.message) ? e.message : 'Não consegui falar com o servidor: ' + (e.message || e))
   }
   if (prev.user !== user || prev.server !== server) { S.map = {}; S.tomb = [] } // outra conta: começa do zero (mescla tudo)
   S.enabled = true
@@ -87,8 +92,9 @@ export async function enable({ user, server }) {
   return config()
 }
 
-export function disable() {
+export function disable() { // "sair da conta": esquece o token; o mapa fica pra voltar sem mesclar de novo
   S.enabled = false
+  delete S.token
   clearInterval(interval); clearTimeout(timer)
   persist()
   return config()

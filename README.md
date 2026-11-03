@@ -30,7 +30,7 @@ npm run dist       # gera instalador NSIS em dist-electron/
 Mesmo app buildado pra web (`npm run build:web`) + `server/server.mjs` (Node puro, porta 8050,
 systemd `excalidraw-ray`, devilsworks) = `draw.raynathus.com.br`:
 
-- Login = escolher nome (localStorage, sem senha). Cenas ilimitadas por usuário, salvas no servidor
+- Login = nome + senha (conta criada no primeiro acesso). Cenas ilimitadas por usuário, salvas no servidor
   (escrita atômica, backup diário 7 dias).
 - **Compartilhar** (menu): link de edição `/d/<id>`, link só-visualização `/v/<viewId>` e snippet
   `<iframe>` pra embed. Quem tem o link acessa (capability); viewId nunca escreve (403).
@@ -39,11 +39,16 @@ systemd `excalidraw-ray`, devilsworks) = `draw.raynathus.com.br`:
 - **App no celular (PWA)**: abrir o site no celular → menu do navegador → *Adicionar à tela inicial*
   (precisa HTTPS). Cena aberta confere a cada 15s / ao voltar pro app se mudou em outro aparelho.
 
-## Sincronização PC ⇄ nuvem/celular
+## Conta e sincronização PC ⇄ nuvem/celular
 
-No desktop: menu → **Sincronizar com a nuvem…** → mesmo nome usado no site/celular → Ativar.
-Projetos locais e da nuvem são mesclados; depois disso cada save sobe em ~2s e o app puxa mudanças
-a cada 20s e ao ganhar foco. Arquivos locais continuam em Documentos (funciona offline; sobe quando voltar a rede).
+Uma conta = nome + senha no servidor (`data/usuarios.json`, scrypt; sessão = token HMAC, cookie `ray` no site
+e `Authorization: Bearer` no app). Nome que ainda não existe vira conta nova com a senha digitada. A lista de
+cenas de um usuário exige a conta dele; cena por link (`/d/<id>`, `/v/<viewId>`) continua sendo capacidade.
+
+No desktop: menu → **Entrar na conta…** (ou o chip 👤 no canto) → nome + senha → entra e já sincroniza.
+No site/celular: mesmo nome e senha. Projetos locais e da nuvem são mesclados; depois disso cada save
+sobe em ~2s e o app puxa mudanças a cada 20s e ao ganhar foco. "Sair da conta" desliga a sincronização
+e esquece o token (os arquivos locais ficam). Arquivos locais continuam em Documentos (funciona offline; sobe quando voltar a rede).
 Conflito na mesma cena = last-write-wins (edição local pendente vence). Estado em `Documentos\ExcalidrawRay\sync.json`.
 
 Deploy: `deploy/deploy.ps1`. Self-check: `node server/server.mjs --check`.

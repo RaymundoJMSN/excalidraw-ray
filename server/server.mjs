@@ -28,6 +28,28 @@ const thumbFile = (id) => path.join(DATA, 'scenes', id + '.thumb')
 // vídeo/áudio do canvas: sobe atrelado a uma cena editável (precisa do id de edição, como o PUT), fica em
 // media/<uuid>.<ext> e a cena guarda só o link. shortcut: apagar a cena não apaga a mídia; limpar quando pesar.
 let MEDIA_MAX = 500 * 1024 * 1024 // check() baixa pra testar o 413
+
+// ---- contas: nome + senha (scrypt) em usuarios.json; sessão = token HMAC sem tabela (como o hub-t20).
+// O site manda cookie `ray`, o app do PC manda `Authorization: Bearer`. Cena por id/viewId continua sendo
+// capacidade (quem tem o link acessa) — é o compartilhar; só a LISTA de cenas de um usuário exige a conta dele.
+const usersFile = () => path.join(DATA, 'usuarios.json')
+function segredo() {
+  const f = path.join(DATA, 'segredo')
+  try { return readFileSync(f, 'utf8').trim() } catch { mkdirSync(DATA, { recursive: true }); const x = crypto.randomBytes(32).toString('hex'); writeFileSync(f, x); return x }
+}
+function readUsers() { try { return JSON.parse(readFileSync(usersFile(), 'utf8')) } catch { return {} } }
+function writeUsers(u) { mkdirSync(DATA, { recursive: true }); writeFileSync(usersFile() + '.tmp', JSON.stringify(u, null, 2)); renameSync(usersFile() + '.tmp', usersFile()) }
+const hashSenha = (senha, sal) => crypto.scryptSync(senha, sal, 32).toString('hex')
+const token = (nome) => nome + '.' + crypto.createHmac('sha256', segredo()).update(nome).digest('base64url')
+function quem(req) { // nome da conta da requisição, ou null
+  const t = req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1] ?? req.headers.cookie?.match(/(?:^|;\s*)ray=([^;]+)/)?.[1]
+  const nome = t?.split('.')[0]
+  if (!nome || !USER.test(nome)) return null
+  const certo = token(nome)
+  return certo.length === t.length && crypto.timingSafeEqual(Buffer.from(certo), Buffer.from(t)) ? nome : null
+}
+let FREIO_MAX = 8 // senhas erradas por IP antes de 60 s de espera (check() baixa)
+const freio = new Map()
 const MEDIA_MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.ogv': 'video/ogg', '.mkv': 'video/x-matroska', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.opus': 'audio/ogg', '.weba': 'audio/webm', '.mpeg': 'audio/mpeg', '.mpg': 'audio/mpeg', '.mpga': 'audio/mpeg' }
 const mediaFile = (nome) => path.join(DATA, 'media', path.basename(nome))
 
@@ -85,10 +107,39 @@ const json = (res, code, obj) => res.writeHead(code, { 'Content-Type': 'applicat
 async function handleApi(req, res, url) {
   const idx = readIndex()
 
+  if (url.pathname === '/api/entrar' && req.method === 'POST') { // conta nova ou login
+    const ip = req.headers['x-real-ip'] ?? req.socket.remoteAddress
+    const f = freio.get(ip)
+    if (f && f.n >= FREIO_MAX && Date.now() < f.ate) { res.writeHead(429).end('muitas tentativas; espere 1 minuto'); return }
+    const raw = await readBody(req, res); if (raw === null) return
+    let nome = '', senha = ''
+    try { const b = JSON.parse(raw); nome = String(b.nome ?? '').trim().toLowerCase(); senha = String(b.senha ?? '') } catch {}
+    if (!USER.test(nome)) { json(res, 400, { error: 'nome inválido (minúsculas, números e hífen)' }); return }
+    if (senha.length < 4) { json(res, 400, { error: 'senha com pelo menos 4 caracteres' }); return }
+    const users = readUsers()
+    let novo = false
+    if (!users[nome]) {
+      const sal = crypto.randomBytes(16).toString('hex')
+      users[nome] = { sal, hash: hashSenha(senha, sal), criado: Date.now() }
+      writeUsers(users); novo = true
+    } else if (users[nome].hash !== hashSenha(senha, users[nome].sal)) {
+      const g = freio.get(ip) ?? { n: 0, ate: 0 }; g.n++; g.ate = Date.now() + 60000; freio.set(ip, g)
+      json(res, 401, { error: 'senha errada' }); return
+    }
+    freio.delete(ip)
+    const t = token(nome)
+    res.setHeader('Set-Cookie', `ray=${t}; Path=/; Max-Age=15552000; SameSite=Lax; HttpOnly`)
+    json(res, 200, { nome, token: t, novo })
+    return
+  }
+  if (url.pathname === '/api/sair' && req.method === 'POST') { res.setHeader('Set-Cookie', 'ray=; Path=/; Max-Age=0'); res.writeHead(204).end(); return }
+  if (url.pathname === '/api/eu') { const n = quem(req); if (n) json(res, 200, { nome: n }); else json(res, 401, { error: 'entre na conta' }); return }
+
   let m = url.pathname.match(/^\/api\/u\/([^/]+)\/scenes$/)
   if (m) {
     const user = m[1]
     if (!USER.test(user)) { json(res, 400, { error: 'usuário inválido' }); return }
+    if (quem(req) !== user) { json(res, 401, { error: 'entre na conta' }); return }
     if (req.method === 'GET') {
       const list = Object.entries(idx.scenes).filter(([, s]) => s.owner === user)
         .map(([id, s]) => ({ id, name: s.name, updatedAt: s.updatedAt ?? 0 }))
@@ -241,11 +292,30 @@ async function check() {
   const base = `http://127.0.0.1:${srv.address().port}`
   const j = (r) => r.json()
 
-  assert.deepEqual(await fetch(`${base}/api/u/ray/scenes`).then(j), [], 'lista vazia')
-  const { id, viewId } = await fetch(`${base}/api/u/ray/scenes`, { method: 'POST', body: JSON.stringify({ name: 'Teste' }) }).then(j)
+  // contas
+  assert.equal((await fetch(`${base}/api/u/ray/scenes`)).status, 401, 'lista exige conta')
+  assert.equal((await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'Ray Inválido', senha: '1234' }) })).status, 400, 'nome inválido')
+  assert.equal((await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: '123' }) })).status, 400, 'senha curta')
+  const entrou = await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: 'segredo1' }) })
+  const conta = await entrou.json()
+  assert.deepEqual([conta.nome, conta.novo, !!conta.token], ['ray', true, true], 'nome novo cria a conta')
+  assert.match(entrou.headers.get('set-cookie') ?? '', /^ray=ray\.[A-Za-z0-9_-]+; Path=\/; Max-Age=\d+; SameSite=Lax; HttpOnly$/, 'cookie de sessão')
+  assert.equal((await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: 'errada1' }) })).status, 401, 'senha errada')
+  const deNovo = await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: 'segredo1' }) }).then(j)
+  assert.deepEqual([deNovo.nome, deNovo.novo, deNovo.token], ['ray', false, conta.token], 'login de novo: mesma conta, mesmo token')
+  const H = { Authorization: 'Bearer ' + conta.token }, C = { Cookie: 'ray=' + conta.token }
+  assert.deepEqual(await fetch(`${base}/api/eu`, { headers: C }).then(j), { nome: 'ray' }, '/api/eu pelo cookie')
+  assert.equal((await fetch(`${base}/api/eu`, { headers: { Cookie: 'ray=ray.adulterado' } })).status, 401, 'token adulterado')
+  assert.equal((await fetch(`${base}/api/u/outro/scenes`, { headers: H })).status, 401, 'conta de um não lista a do outro')
+  FREIO_MAX = 2
+  for (let i = 0; i < 2; i++) await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: 'errada2' }) })
+  assert.equal((await fetch(`${base}/api/entrar`, { method: 'POST', body: JSON.stringify({ nome: 'ray', senha: 'segredo1' }) })).status, 429, 'freio depois de N senhas erradas')
+  freio.clear(); FREIO_MAX = 8
+
+  assert.deepEqual(await fetch(`${base}/api/u/ray/scenes`, { headers: H }).then(j), [], 'lista vazia')
+  const { id, viewId } = await fetch(`${base}/api/u/ray/scenes`, { method: 'POST', headers: H, body: JSON.stringify({ name: 'Teste' }) }).then(j)
   assert.ok(id && viewId, 'create devolve id+viewId')
-  assert.equal((await fetch(`${base}/api/u/ray/scenes`).then(j)).length, 1, 'lista com 1')
-  assert.deepEqual(await fetch(`${base}/api/u/outro/scenes`).then(j), [], 'outro usuário não vê')
+  assert.equal((await fetch(`${base}/api/u/ray/scenes`, { headers: C }).then(j)).length, 1, 'lista com 1 (pelo cookie também)')
 
   const scene = { type: 'excalidraw', version: 2, elements: [{ type: 'rectangle', id: 'r1' }], appState: {}, files: {} }
   const put = await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: JSON.stringify(scene) })
@@ -276,7 +346,7 @@ async function check() {
   assert.deepEqual((await fetch(`${base}/api/scene/${id}`).then(j)).scene, scene, 'inválido não corrompe')
 
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PATCH', body: JSON.stringify({ name: 'Novo nome' }) })).status, 204, 'rename')
-  assert.equal((await fetch(`${base}/api/u/ray/scenes`).then(j))[0].name, 'Novo nome')
+  assert.equal((await fetch(`${base}/api/u/ray/scenes`, { headers: H }).then(j))[0].name, 'Novo nome')
 
   assert.equal((await fetch(`${base}/api/u/Traversal..%2F/scenes`)).status, 400, 'usuário inválido 400')
   assert.equal((await fetch(`${base}/api/scene/..%2F..%2Fetc`)).status, 404, 'id inválido 404')
@@ -307,7 +377,7 @@ async function check() {
   assert.equal((await fetch(`${base}/api/media/..%2Findex.json`)).status, 404, 'nome fora do padrão')
 
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'DELETE' })).status, 204, 'delete')
-  assert.deepEqual(await fetch(`${base}/api/u/ray/scenes`).then(j), [], 'lista vazia após delete')
+  assert.deepEqual(await fetch(`${base}/api/u/ray/scenes`, { headers: H }).then(j), [], 'lista vazia após delete')
   assert.equal((await fetch(`${base}/api/scene/${id}`)).status, 404, 'cena deletada 404')
 
   srv.close()

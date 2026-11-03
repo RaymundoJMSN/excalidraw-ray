@@ -44,6 +44,7 @@ export default function App() {
   const [showPanel, setShowPanel] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showSync, setShowSync] = useState(false)
+  const [contaNome, setContaNome] = useState(null) // desktop: conta da sincronização (null = sem conta)
   const [updateVersion, setUpdateVersion] = useState(null)
   const [atualizando, setAtualizando] = useState(false)
   const pending = useRef(null) // últimos (elements, appState, files) ainda não salvos
@@ -130,6 +131,10 @@ export default function App() {
     if (!user && !route) return
     ;(async () => {
       if (route) { await open(route[2]); return }
+      if (isWeb) { // sessão do site pode ter expirado (ou é do tempo em que não tinha senha): volta pro login
+        const r = await fetch('/api/eu').catch(() => null)
+        if (!r?.ok) { delete LS.rayUser; setUser(null); return }
+      }
       let id = await ray.last()
       const list = await ray.list()
       if (!id || !list.some((p) => p.id === id)) id = list[0]?.id
@@ -138,7 +143,9 @@ export default function App() {
     })()
     ray.onFlush(async () => { await flush(); ray.flushed() })
     window.ray?.onUpdate?.((v) => setUpdateVersion(v))
+    window.ray?.syncGet?.().then((c) => setContaNome(c.enabled ? c.user : null))
     window.ray?.onSync?.(async (type, p) => { // desktop: sync no main avisou que algo veio da nuvem
+      if (type === 'status') setContaNome(p.enabled ? p.user : null)
       if (type === 'list') refresh()
       if (type !== 'changed' || p.id !== idRef.current) return
       if (p.deleted) { idRef.current = null; pending.current = null; location.reload(); return }
@@ -242,6 +249,14 @@ export default function App() {
     setShowPanel(true)
   }
 
+  const sair = async () => { // site: encerra a sessão e volta pro login
+    if (!confirm(`Sair da conta ${user}?`)) return
+    await flush()
+    await fetch('/api/sair', { method: 'POST' }).catch(() => {})
+    delete LS.rayUser
+    location.href = '/'
+  }
+
   const instalarUpdate = async () => {
     setAtualizando(true) // o download (~115 MB) é mudo: sem isto parece que o clique não foi
     await flush()
@@ -270,10 +285,18 @@ export default function App() {
         renderEmbeddable={renderMidia} // link de vídeo/áudio vira <video>/<audio>; o resto segue no iframe
         excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray, inserirMidia, jsonDaCena, serializeAsJSON } }}
         UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
-        renderTopRightUI={() => updateVersion && (
-          <button className={'ray-update' + (atualizando ? ' baixando' : '')} disabled={atualizando}
-            title={atualizando ? 'Baixando o instalador… o app fecha e reabre sozinho' : `Atualizar para a versão ${updateVersion} (baixa e reinstala sozinho)`}
-            onClick={instalarUpdate}>{atualizando ? <><span className="gira">⟳</span> Baixando…</> : `⬇ Atualizar v${updateVersion}`}</button>
+        renderTopRightUI={() => (
+          <>
+            {!readOnly && !guest && (window.ray?.syncGet || isWeb) && ( // quem sou eu: sempre à vista
+              <button className="ray-conta" title={isWeb ? 'Clique pra sair da conta' : contaNome ? 'Conta sincronizada com a nuvem (clique pra ver)' : 'Entrar na conta pra sincronizar com o site e o celular'}
+                onClick={() => (isWeb ? sair() : setShowSync(true))}>👤 {isWeb ? user : contaNome ?? 'entrar na conta'}</button>
+            )}
+            {updateVersion && (
+              <button className={'ray-update' + (atualizando ? ' baixando' : '')} disabled={atualizando}
+                title={atualizando ? 'Baixando o instalador… o app fecha e reabre sozinho' : `Atualizar para a versão ${updateVersion} (baixa e reinstala sozinho)`}
+                onClick={instalarUpdate}>{atualizando ? <><span className="gira">⟳</span> Baixando…</> : `⬇ Atualizar v${updateVersion}`}</button>
+            )}
+          </>
         )}>
         {readOnly ? (
           <MainMenu>
@@ -287,6 +310,7 @@ export default function App() {
             {!guest && <MainMenu.Item onSelect={newProject} icon={<IconNew />}>Novo projeto</MainMenu.Item>}
             {!guest && <MainMenu.Item onSelect={openPanel} icon={<IconProjects />}>Projetos…</MainMenu.Item>}
             {isWeb && <MainMenu.Item onSelect={() => setShowShare(true)} icon={<IconShare />}>Compartilhar…</MainMenu.Item>}
+            {isWeb && !guest && <MainMenu.Item onSelect={sair} icon={<IconCloud />}>Sair da conta ({user})</MainMenu.Item>}
             <MainMenu.Separator />
             <MainMenu.DefaultItems.LoadScene />
             <MainMenu.DefaultItems.Export />
@@ -296,7 +320,7 @@ export default function App() {
             <MainMenu.DefaultItems.ClearCanvas />
             <MainMenu.Separator />
             {!isWeb && <MainMenu.Item onSelect={() => ray.openFolder()} icon={<IconFolderOpen />}>Abrir pasta de projetos</MainMenu.Item>}
-            {window.ray?.syncGet && <MainMenu.Item onSelect={() => setShowSync(true)} icon={<IconCloud />}>Sincronizar com a nuvem…</MainMenu.Item>}
+            {window.ray?.syncGet && <MainMenu.Item onSelect={() => setShowSync(true)} icon={<IconCloud />}>{contaNome ? `Conta (${contaNome})…` : 'Entrar na conta…'}</MainMenu.Item>}
             {!isWeb && <MainMenu.Separator />}
             <MainMenu.DefaultItems.ToggleTheme />
             <MainMenu.DefaultItems.ChangeCanvasBackground />
