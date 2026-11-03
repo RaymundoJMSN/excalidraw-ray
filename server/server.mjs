@@ -15,7 +15,7 @@ import assert from 'node:assert'
 const ROOT = path.dirname(fileURLToPath(import.meta.url))
 const PUB = path.join(ROOT, 'public')
 let DATA = process.env.RAY_DATA ?? path.join(ROOT, 'data') // check() repõe pra um tmpdir
-const MAX_BODY = 20 * 1024 * 1024 // cenas com imagens embutidas
+const MAX_BODY = 512 * 1024 * 1024 // cena com imagens embutidas chega a 112 MB (medido); igual ao client_max_body_size do nginx
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.webmanifest': 'application/manifest+json' }
 const ID = /^[a-zA-Z0-9-]{8,40}$/
 const USER = /^[a-z0-9-]{1,30}$/
@@ -342,6 +342,8 @@ async function check() {
   assert.equal(await fetch(`${base}/api/scene/${viewId}/thumb`).then((r) => r.status), 200, 'thumb legível pelo viewId')
   assert.equal((await fetch(`${base}/api/scene/${viewId}/thumb`, { method: 'PUT', body: 'x' })).status, 403, 'viewId não escreve thumb')
 
+  const grande = JSON.stringify({ ...scene, files: { f1: { dataURL: 'x'.repeat(25 * 1024 * 1024) } } }) // acima dos 20 MB antigos
+  assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: grande })).status, 200, 'cena de 25 MB entra')
   assert.equal((await fetch(`${base}/api/scene/${id}`, { method: 'PUT', body: 'lixo' })).status, 400, 'json inválido 400')
   assert.deepEqual((await fetch(`${base}/api/scene/${id}`).then(j)).scene, scene, 'inválido não corrompe')
 
