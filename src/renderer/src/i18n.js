@@ -25,6 +25,10 @@ function fixNode(n) {
     return
   }
   if (n.nodeType !== Node.ELEMENT_NODE) return
+  // a dica "Click to interact" do embed vem VAZIA no pt-BR da 0.18.1 (sobra uma pílula escura sem texto)
+  for (const h of [n, ...n.querySelectorAll('.excalidraw__embeddable-hint')]) {
+    if (h.classList?.contains('excalidraw__embeddable-hint') && !h.textContent.trim()) h.textContent = 'Clique para interagir'
+  }
   const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT)
   for (let t = w.nextNode(); t; t = w.nextNode()) {
     const s = t.textContent.trim()

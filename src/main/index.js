@@ -6,8 +6,10 @@ import { spawn } from 'node:child_process'
 import * as store from './store'
 import * as sync from './sync'
 
-// mídia do canvas (<video src="ray-media://x.mp4">): `stream` é o que deixa vídeo/áudio tocar por esquema próprio
-protocol.registerSchemesAsPrivileged([{ scheme: 'ray-media', privileges: { stream: true, supportFetchAPI: true, secure: true, bypassCSP: true } }])
+// mídia do canvas (<video src="ray-media://x.mp4">): `stream` deixa vídeo/áudio tocar por esquema próprio e `standard`
+// dá origem de verdade à URL — sem ele o Chromium aceita o 1º Range mas descarta o 2º (mp4 com moov no fim) e o <video>
+// morre com erro 4, mesmo com bytes e cabeçalhos certos (medido com um mp4 de 1 MB; o fixture pequeno nunca pedia o 2º)
+protocol.registerSchemesAsPrivileged([{ scheme: 'ray-media', privileges: { standard: true, stream: true, supportFetchAPI: true, corsEnabled: true, secure: true, bypassCSP: true } }])
 const MEDIA_MIME = { mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', ogv: 'video/ogg', mkv: 'video/x-matroska', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg', weba: 'audio/webm' }
 
 if (process.env.RAY_TEST_DIR) { // instância isolada p/ testes: não briga com o app instalado nem toca nos projetos reais
@@ -153,7 +155,7 @@ app.whenReady().then(() => {
   app.on('browser-window-focus', () => sync.syncNow()) // voltou pro PC: puxa o que mudou no celular
   ipcMain.handle('media:save', async (_e, nome, origem) => 'ray-media://' + await store.saveMedia(nome, origem))
   protocol.handle('ray-media', (req) => {
-    const f = store.mediaPath(decodeURIComponent(req.url.slice('ray-media://'.length)))
+    const f = store.mediaPath(decodeURIComponent(req.url.slice('ray-media://'.length).replace(/\/$/, ''))) // standard põe / no fim
     let size
     try { size = fs.statSync(f).size } catch { return new Response('', { status: 404 }) }
     // Range na mão: net.fetch(file://) ignora o cabeçalho e devolve 200 inteiro (medido) — aí o vídeo não busca posição
@@ -163,7 +165,7 @@ app.whenReady().then(() => {
     if (start > end) return new Response('', { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
     return new Response(Readable.toWeb(fs.createReadStream(f, { start, end })), {
       status: m ? 206 : 200,
-      headers: { 'Content-Type': MEDIA_MIME[path.extname(f).slice(1)] ?? 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1), ...(m && { 'Content-Range': `bytes ${start}-${end}/${size}` }) },
+      headers: { 'Content-Type': MEDIA_MIME[path.extname(f).slice(1)] ?? 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', 'Content-Length': String(end - start + 1), ...(m && { 'Content-Range': `bytes ${start}-${end}/${size}` }) },
     })
   })
   mainWin = createWindow()

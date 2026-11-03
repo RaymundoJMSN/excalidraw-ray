@@ -1,5 +1,5 @@
 // Prova de ponta a ponta no app de verdade (electron-vite dev + Electron isolado por RAY_TEST_DIR): solta um
-// mp4 no canvas e cola um mp3 → viram embeddables com link ray-media://, o <video> lê os metadados pelo
+// mp4 (>1 MiB, moov no FIM: obriga o Chromium a pedir um 2º Range, que quebrava) no canvas e cola um mp3 → viram embeddables com link ray-media://, o <video> lê os metadados pelo
 // esquema próprio, o Range responde 206 (seek) e o autosave grava o link. `npm run check:midia`
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
@@ -50,7 +50,7 @@ try {
   const b64 = async (f) => (await readFile(new URL('./fixtures/' + f, import.meta.url))).toString('base64')
   const out = await js(`(async () => {
     const bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
-    const dt = new DataTransfer(); dt.items.add(new File([bytes('${await b64('mini.mp4')}')], 'mini.mp4', { type: 'video/mp4' }))
+    const dt = new DataTransfer(); dt.items.add(new File([bytes('${await b64('moov-no-fim.mp4')}')], 'moov-no-fim.mp4', { type: 'video/mp4' }))
     document.querySelector('canvas').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: 400, clientY: 300, bubbles: true, cancelable: true }))
     const dt2 = new DataTransfer(); dt2.items.add(new File([bytes('${await b64('mini.mp3')}')], 'mini.mp3', { type: 'audio/mpeg' }))
     document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt2, bubbles: true, cancelable: true }))
@@ -66,7 +66,7 @@ try {
       ready: video?.readyState ?? 0, duracao: video?.duration ?? 0,
     }
   })()`)
-  const mp4 = respostas.find((r) => r.url.endsWith('.mp4'))
+  const mp4 = respostas.find((r) => /\.mp4\/?$/.test(r.url)) // esquema standard põe / no fim da URL
   const cabecalhos = Object.fromEntries(Object.entries(mp4?.headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]))
   console.log(out, { status: mp4?.status, 'content-range': cabecalhos['content-range'] })
   assert.equal(out.els.length, 2, 'drop do mp4 + paste do mp3 = 2 embeddables')
@@ -76,7 +76,7 @@ try {
   assert.match(audio?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp3$/)
   assert.deepEqual([audio.w, audio.h], [320, 54], 'áudio = barra')
   assert.ok(out.temVideo && out.temAudio, 'renderEmbeddable desenhou <video> e <audio>')
-  assert.ok(out.ready >= 1 && out.duracao > 1.5, 'vídeo carregou metadados pelo ray-media://')
+  assert.ok(out.ready >= 1 && out.duracao > 7.5, 'vídeo carregou metadados pelo ray-media:// (2º Range aceito)')
   assert.equal(mp4?.status, 206, 'o <video> pede Range e o esquema responde 206 (seek)')
   assert.match(cabecalhos['content-range'] ?? '', /^bytes \d+-\d+\/\d+$/)
   const midias = await readdir(path.join(dir, 'docs', 'media'))
