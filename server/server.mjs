@@ -53,9 +53,21 @@ const freio = new Map()
 const MEDIA_MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.ogv': 'video/ogg', '.mkv': 'video/x-matroska', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.oga': 'audio/ogg', '.m4a': 'audio/mp4', '.aac': 'audio/aac', '.flac': 'audio/flac', '.opus': 'audio/ogg', '.weba': 'audio/webm', '.mpeg': 'audio/mpeg', '.mpg': 'audio/mpeg', '.mpga': 'audio/mpeg' }
 const mediaFile = (nome) => path.join(DATA, 'media', path.basename(nome))
 
+async function receberMedia(req, res, nome) { // corpo = o arquivo, em streaming; nome já validado e com extensão aceita
+  const len = Number(req.headers['content-length'])
+  if (!len) { res.writeHead(411).end(); return } // sem tamanho não dá pra barrar antes de gravar
+  if (len > MEDIA_MAX) { res.writeHead(413).end(); return }
+  await mkdir(path.join(DATA, 'media'), { recursive: true })
+  const tmp = mediaFile(nome) + '.tmp'
+  try { await pipeline(req, createWriteStream(tmp)); await rename(tmp, mediaFile(nome)) } // streaming: nada de 500 MB em memória
+  catch (e) { await unlink(tmp).catch(() => {}); throw e }
+  json(res, 200, { url: '/api/media/' + nome })
+}
+
 async function servirMedia(req, res, nome) { // Range obrigatório: sem 206 o <video> não busca posição
   let size
   try { size = (await stat(mediaFile(nome))).size } catch { res.writeHead(404).end(); return }
+  if (req.method === 'HEAD') { res.writeHead(200, { 'Content-Type': MEDIA_MIME[path.extname(nome)] ?? 'application/octet-stream', 'Content-Length': size }).end(); return }
   const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '')
   let start = 0, end = size - 1
   if (m) {
@@ -165,10 +177,15 @@ async function handleApi(req, res, url) {
     return
   }
 
-  m = url.pathname.match(/^\/api\/media\/([0-9a-f-]+\.[a-z0-9]+)$/)
+  m = url.pathname.match(/^\/api\/media\/([a-z0-9][a-z0-9-]*\.[a-z0-9]+)$/) // uuid do site ou base36 do desktop
   if (m) {
-    if (req.method === 'GET') await servirMedia(req, res, m[1])
-    else res.writeHead(405).end()
+    if (req.method === 'GET' || req.method === 'HEAD') await servirMedia(req, res, m[1])
+    else if (req.method === 'PUT') { // sync do desktop: sobe com o nome local; mesmo nome = mesmo arquivo, não regrava
+      if (!quem(req)) { req.resume(); json(res, 401, { error: 'entre na conta' }); return }
+      if (!MEDIA_MIME[path.extname(m[1])]) { req.resume(); res.writeHead(415).end('tipo não aceito'); return }
+      if (existsSync(mediaFile(m[1]))) { req.resume(); json(res, 200, { url: '/api/media/' + m[1] }); return }
+      await receberMedia(req, res, m[1])
+    } else res.writeHead(405).end()
     return
   }
 
@@ -189,15 +206,7 @@ async function handleApi(req, res, url) {
       if (req.method !== 'POST') { res.writeHead(405).end(); return }
       const ext = path.extname(url.searchParams.get('nome') ?? '').toLowerCase()
       if (!MEDIA_MIME[ext]) { res.writeHead(415).end('tipo não aceito'); return }
-      const len = Number(req.headers['content-length'])
-      if (!len) { res.writeHead(411).end(); return } // sem tamanho não dá pra barrar antes de gravar
-      if (len > MEDIA_MAX) { res.writeHead(413).end(); return }
-      const nome = crypto.randomUUID() + ext
-      await mkdir(path.join(DATA, 'media'), { recursive: true })
-      const tmp = mediaFile(nome) + '.tmp'
-      try { await pipeline(req, createWriteStream(tmp)); await rename(tmp, mediaFile(nome)) } // streaming: nada de 500 MB em memória
-      catch (e) { await unlink(tmp).catch(() => {}); throw e }
-      json(res, 200, { url: '/api/media/' + nome })
+      await receberMedia(req, res, crypto.randomUUID() + ext)
       return
     }
 
@@ -376,6 +385,15 @@ async function check() {
   assert.equal(await fetch(base + murl, { headers: { Range: 'bytes=-3' } }).then((r) => r.text()), 'def', 'range sufixo')
   assert.equal(await fetch(base + murl, { headers: { Range: 'bytes=14-99' } }).then((r) => r.text()), 'ef', 'fim além do arquivo é cortado')
   assert.equal((await fetch(base + murl, { headers: { Range: 'bytes=99-' } })).status, 416)
+  // mídia por nome (sync do desktop): HEAD confere, PUT sobe uma vez, mesmo nome não regrava
+  assert.equal((await fetch(`${base}/api/media/abc123.mp4`, { method: 'HEAD' })).status, 404, 'HEAD de quem não existe')
+  assert.equal((await fetch(`${base}/api/media/abc123.mp4`, { method: 'PUT', body: bytes })).status, 401, 'PUT por nome exige conta')
+  assert.equal((await fetch(`${base}/api/media/abc123.exe`, { method: 'PUT', headers: H, body: bytes })).status, 415, 'PUT por nome: extensão')
+  assert.equal((await fetch(`${base}/api/media/abc123.mp4`, { method: 'PUT', headers: H, body: bytes })).status, 200, 'PUT por nome')
+  const hd = await fetch(`${base}/api/media/abc123.mp4`, { method: 'HEAD' })
+  assert.deepEqual([hd.status, hd.headers.get('content-length'), (await hd.arrayBuffer()).byteLength], [200, '16', 0], 'HEAD: só cabeçalhos')
+  assert.equal((await fetch(`${base}/api/media/abc123.mp4`, { method: 'PUT', headers: H, body: 'outro conteúdo' })).status, 200)
+  assert.equal(await fetch(`${base}/api/media/abc123.mp4`).then((r) => r.text()), '0123456789abcdef', 'mesmo nome não regrava')
   assert.equal((await fetch(`${base}/api/media/nao-existe.mp4`)).status, 404)
   assert.equal((await fetch(`${base}/api/media/..%2Findex.json`)).status, 404, 'nome fora do padrão')
 

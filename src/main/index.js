@@ -155,8 +155,12 @@ app.whenReady().then(() => {
   sync.init({ dir: store.dir(), store, notify: (type, payload) => mainWin?.webContents.send('sync', type, payload) })
   app.on('browser-window-focus', () => sync.syncNow()) // voltou pro PC: puxa o que mudou no celular
   ipcMain.handle('media:save', async (_e, nome, origem) => 'ray-media://' + await store.saveMedia(nome, origem))
-  protocol.handle('ray-media', (req) => {
-    const f = store.mediaPath(decodeURIComponent(req.url.slice('ray-media://'.length).replace(/\/$/, ''))) // standard põe / no fim
+  protocol.handle('ray-media', async (req) => {
+    const nome = decodeURIComponent(req.url.slice('ray-media://'.length).replace(/\/$/, '')) // standard põe / no fim
+    const f = store.mediaPath(nome)
+    if (!fs.existsSync(f)) { // cena veio da nuvem (ou de outro aparelho): baixa na 1ª vez que o canvas pede
+      try { await sync.baixarMedia(nome) } catch (e) { console.log('[media]', nome, e.message); return new Response('', { status: 404 }) }
+    }
     let size
     try { size = fs.statSync(f).size } catch { return new Response('', { status: 404 }) }
     // Range na mão: net.fetch(file://) ignora o cabeçalho e devolve 200 inteiro (medido) — aí o vídeo não busca posição

@@ -2,6 +2,7 @@
 import assert from 'node:assert'
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -62,6 +63,24 @@ try {
   await sync.syncNow()
   assert.equal(JSON.parse(store.load(pc)).elements[0].version, 3, 'edição do celular desceu')
   assert.ok(events.some(([t, p]) => t === 'changed' && p.id === pc), 'avisou changed')
+
+  // mídia: arquivo local sobe com o mesmo nome e o link vira /api/media/; mídia da nuvem desce como ray-media:// e baixa na 1ª vez
+  const nomeLocal = await store.saveMedia('clipe.mp4', Buffer.from('video-falso'))
+  const comMidia = (els, link) => JSON.stringify({ type: 'excalidraw', version: 2, elements: [...els, { type: 'embeddable', id: 'm1', version: 1, link }], appState: { viewBackgroundColor: '#fff' }, files: {} })
+  await store.save(pc, comMidia([el('p1', 4)], 'ray-media://' + nomeLocal)); sync.localSaved(pc, store.load(pc))
+  await sync.syncNow()
+  assert.equal(sync.config().error, null, 'sem erro no sync com mídia: ' + sync.config().error)
+  assert.equal((await fetch(`${base}/api/scene/${pcRemote}`).then(j)).scene.elements[1].link, '/api/media/' + nomeLocal, 'link virou /api/media/ na nuvem')
+  assert.equal(await fetch(`${base}/api/media/${nomeLocal}`).then((r) => r.text()), 'video-falso', 'arquivo subiu com o mesmo nome')
+  assert.ok(store.load(pc).includes('ray-media://' + nomeLocal), 'o arquivo local continua com ray-media://')
+  await fetch(`${base}/api/media/web1.mp4`, { method: 'PUT', ...H, body: 'da-web' })
+  await fetch(`${base}/api/scene/${cel.id}`, { method: 'PUT', body: comMidia([el('c1', 5)], '/api/media/web1.mp4') })
+  await sync.syncNow()
+  assert.equal(JSON.parse(store.load(cel.id)).elements[1].link, 'ray-media://web1.mp4', 'link da nuvem vira ray-media:// no PC')
+  assert.ok(!existsSync(store.mediaPath('web1.mp4')), 'não baixa antes de precisar')
+  await Promise.all([sync.baixarMedia('web1.mp4'), sync.baixarMedia('web1.mp4')]) // dois pedidos = um download
+  assert.equal(readFileSync(store.mediaPath('web1.mp4'), 'utf8'), 'da-web', 'baixa na 1ª vez que o canvas pede')
+  await assert.rejects(sync.baixarMedia('nao-existe.mp4'), /nuvem/, 'mídia que não está na nuvem avisa')
 
   // rename nos dois sentidos
   store.rename(pc, 'PC renomeado'); sync.localRenamed(pc); await sync.syncNow()

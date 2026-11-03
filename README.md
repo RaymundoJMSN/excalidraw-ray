@@ -48,7 +48,9 @@ cenas de um usuário exige a conta dele; cena por link (`/d/<id>`, `/v/<viewId>`
 No desktop: menu → **Entrar na conta…** (ou o chip 👤 no canto) → nome + senha → entra e já sincroniza.
 No site/celular: mesmo nome e senha. Projetos locais e da nuvem são mesclados; depois disso cada save
 sobe em ~2s e o app puxa mudanças a cada 20s e ao ganhar foco. "Sair da conta" desliga a sincronização
-e esquece o token (os arquivos locais ficam). Arquivos locais continuam em Documentos (funciona offline; sobe quando voltar a rede).
+e esquece o token (os arquivos locais ficam). **Vídeo/áudio sincroniza também**: o arquivo local sobe pra nuvem com o
+mesmo nome e o link `ray-media://` vira `/api/media/` na cena da nuvem (e volta na descida); mídia feita no site é
+baixada pro PC na primeira vez que o canvas pede. Arquivos locais continuam em Documentos (funciona offline; sobe quando voltar a rede).
 Conflito na mesma cena = last-write-wins (edição local pendente vence). Estado em `Documentos\ExcalidrawRay\sync.json`.
 
 Deploy: `deploy/deploy.ps1`. Self-check: `node server/server.mjs --check`.

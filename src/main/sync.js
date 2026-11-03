@@ -2,8 +2,11 @@
 // Sem deps de electron (testável com node puro). Arquivos locais continuam sendo a fonte offline;
 // a nuvem é espelho. Conflito = last-write-wins por cena (edição local pendente vence).
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
 export const DEFAULT_SERVER = 'https://draw.raynathus.com.br'
 const USER = /^[a-z0-9-]{1,30}$/
@@ -128,6 +131,40 @@ export function localRemoved(id) {
   schedule(500)
 }
 
+// ---- mídia (vídeo/áudio do canvas): no PC a cena aponta pra ray-media://<nome> (arquivo em Documentos), no site
+// pra /api/media/<nome>. O mesmo nome vale nos dois lados: na subida o arquivo vai pra nuvem uma vez e o link é
+// traduzido; na descida o link volta pra ray-media:// e o main baixa o arquivo na 1ª vez que o canvas pede.
+const MEDIA_LINK = /("link":\s*")(ray-media:\/\/|\/api\/media\/)([a-z0-9][a-z0-9.-]*)"/g
+export const paraNuvem = (json) => json.replace(MEDIA_LINK, (_m, p, _esq, nome) => `${p}/api/media/${nome}"`)
+export const paraLocal = (json) => json.replace(MEDIA_LINK, (_m, p, _esq, nome) => `${p}ray-media://${nome}"`)
+export const midiasDe = (json) => [...new Set([...json.matchAll(MEDIA_LINK)].map((m) => m[3]))]
+
+async function subirMedia(nome) {
+  const f = store.mediaPath(nome)
+  if (!fs.existsSync(f)) return // já veio da nuvem e ainda não foi baixada: nada a subir
+  if ((await api(`/api/media/${nome}`, { method: 'HEAD' })).ok) return
+  // shortcut: arquivo inteiro em memória (clipes de celular, poucos MB); stream se alguém soltar um filme
+  const r = await api(`/api/media/${nome}`, { method: 'PUT', body: fs.readFileSync(f) })
+  if (!r.ok) throw new Error('upload de mídia falhou: ' + r.status)
+}
+
+const baixando = new Map() // nome → promise: dois <video> pedindo o mesmo arquivo = um download
+export function baixarMedia(nome) {
+  if (!baixando.has(nome)) {
+    baixando.set(nome, (async () => {
+      const f = store.mediaPath(nome)
+      const r = await api(`/api/media/${nome}`)
+      if (!r.ok) throw new Error('mídia não está na nuvem: ' + r.status)
+      await fsp.mkdir(path.dirname(f), { recursive: true })
+      const tmp = f + '.tmp'
+      try { await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(tmp)); await fsp.rename(tmp, f) }
+      catch (e) { await fsp.unlink(tmp).catch(() => {}); throw e }
+      return f
+    })().finally(() => baixando.delete(nome)))
+  }
+  return baixando.get(nome)
+}
+
 export function syncNow() {
   if (!S.enabled) return Promise.resolve(config())
   if (running) { again = true; return running }
@@ -162,7 +199,8 @@ async function push(lid, e) {
   e.dirty = false // antes de ler: um save que chegar durante o upload volta a sujar
   const json = store.load(lid)
   if (json == null) return
-  const r = await api(`/api/scene/${e.remoteId}`, { method: 'PUT', body: json })
+  for (const nome of midiasDe(json)) await subirMedia(nome)
+  const r = await api(`/api/scene/${e.remoteId}`, { method: 'PUT', body: paraNuvem(json) })
   if (!r.ok) { e.dirty = true; throw new Error('upload falhou: ' + r.status) }
   const body = await r.json().catch(() => ({}))
   if (body.updatedAt) e.syncedAt = body.updatedAt // servidor antigo (204) → o próximo pull vê sig igual e só alinha
@@ -174,7 +212,7 @@ async function pull(lid, e, updatedAt) {
   const r = await api(`/api/scene/${e.remoteId}`)
   if (!r.ok) throw new Error('download falhou: ' + r.status)
   const d = await r.json()
-  const json = JSON.stringify(d.scene)
+  const json = paraLocal(JSON.stringify(d.scene))
   const s = sig(json)
   e.syncedAt = d.updatedAt ?? updatedAt
   if (s === e.sig || e.dirty) return false // nada novo, ou editado aqui enquanto baixava (local vence)
@@ -248,7 +286,7 @@ async function cycle() {
     const g = await api(`/api/scene/${rid}`)
     if (!g.ok) continue
     const d = await g.json()
-    const json = JSON.stringify(d.scene)
+    const json = paraLocal(JSON.stringify(d.scene))
     store.createFrom(rid, rs.name, json)
     S.map[rid] = { remoteId: rid, syncedAt: d.updatedAt ?? rs.updatedAt, sig: sig(json), dirty: false, nameDirty: false, thumbDirty: false }
     await pullThumb(rid, rid)
