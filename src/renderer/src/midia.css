@@ -2,6 +2,8 @@
    redimensiona) e só a barra do player recebe eventos — sem o "clique para interagir" do pacote. */
 .excalidraw__embeddable-container:has(.ray-player) .excalidraw__embeddable-container__inner { pointer-events: none !important; }
 .excalidraw__embeddable-container:has(.ray-player) .excalidraw__embeddable-hint { display: none; }
+/* o pacote deixa um respiro de strokeWidth px ao redor do conteúdo; foto não tem moldura */
+.excalidraw__embeddable-container:has(.ray-player) .excalidraw__embeddable__outer { padding: 0 !important; }
 /* o popup de link do pacote (ray-media://… com editar/abrir) não faz sentido pra mídia */
 .excalidraw-hyperlinkContainer:has(a[href^="ray-media://"], a[href*="/api/media/"]) { display: none; }
 

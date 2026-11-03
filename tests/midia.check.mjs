@@ -62,13 +62,14 @@ try {
     await new Promise((r) => setTimeout(r, 1500)) // autosave (800 ms)
     // como foto: clique no corpo cai no canvas, clique na barra cai no botão; só o vídeo selecionado → popup de link escondido
     const r = document.querySelector('.ray-player')?.getBoundingClientRect()
+    const larguras = [document.querySelector('.excalidraw__embeddable-container').getBoundingClientRect().width, r?.width]
     const corpo = r && document.elementFromPoint(r.left + r.width / 2, r.top + 10)?.tagName
     const botao = r && document.elementFromPoint(r.left + 14, r.bottom - 14)?.tagName
     // popup de link do pacote (markup real: div.excalidraw-hyperlinkContainer > a.excalidraw-hyperlinkContainer-link[href]):
     // o pacote só o abre num clique de mouse de verdade, então a regra CSS é provada com o mesmo markup injetado
     const fakePopup = (href) => { const d = document.createElement('div'); d.className = 'excalidraw-hyperlinkContainer'; d.innerHTML = '<a class="excalidraw-hyperlinkContainer-link" href="' + href + '">x</a>'; document.body.appendChild(d); return getComputedStyle(d).display }
     return {
-      corpo, botao, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
+      larguras, corpo, botao, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
       els: embeds().map((e) => ({ link: e.link, w: e.width, h: e.height, traco: e.strokeColor, cantos: e.roundness })),
       temVideo: !!video, temAudio: !!document.querySelector('.excalidraw__embeddable-container audio'),
       ready: video?.readyState ?? 0, duracao: video?.duration ?? 0,
@@ -85,6 +86,7 @@ try {
   assert.match(audio?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp3$/)
   assert.deepEqual([audio.w, audio.h], [320, 64], 'áudio = barra + corpo pra arrastar')
   assert.ok(out.temVideo && out.temAudio, 'renderEmbeddable desenhou <video> e <audio>')
+  assert.equal(out.larguras[0], out.larguras[1], 'player cobre a caixa inteira (sem respiro do traço)')
   assert.equal(out.corpo, 'CANVAS', 'clique no corpo do vídeo vai pro canvas (seleciona/arrasta como foto)')
   assert.equal(out.botao, 'BUTTON', 'barra do player recebe o clique sem ativar nada')
   assert.deepEqual([out.popupMidia, out.popupWeb, out.popupSite], ['none', 'none', 'flex'], 'popup de link escondido só pra mídia (desktop e web); o do pacote é flex')
@@ -96,6 +98,15 @@ try {
   const cenas = await readdir(path.join(dir, 'docs', 'projects'))
   const cena = await readFile(path.join(dir, 'docs', 'projects', cenas.find((f) => f.endsWith('.excalidraw'))), 'utf8')
   assert.ok(cena.includes(video.link) && cena.includes(audio.link), 'autosave gravou os links')
+  const migrado = await js(`(async () => {
+    const id = await window.ray.last(), cena = JSON.parse(await window.ray.load(id))
+    cena.elements = cena.elements.map((e) => (e.type === 'embeddable' ? { ...e, strokeColor: '#1e1e1e' } : e)) // como ficou quem soltou vídeo antes da 1.8.1
+    await window.ray.save(id, JSON.stringify(cena))
+    location.reload()
+  })()`).catch(() => {}) // reload derruba o contexto; o próximo evaluate espera o app voltar
+  for (let i = 0; ; i++) { try { await js('new Promise((r) => { const t = setInterval(() => { if (window.__rayTest?.api?.getSceneElements().length) { clearInterval(t); r(true) } }, 200) })'); break } catch (e) { if (i > 20) throw e; await new Promise((r) => setTimeout(r, 500)) } }
+  const tracos = await js("window.__rayTest.api.getSceneElements().filter((e) => e.type === 'embeddable').map((e) => e.strokeColor)")
+  assert.deepEqual(tracos, ['transparent', 'transparent'], 'ao abrir a cena, mídia antiga com traço vira transparente')
   console.log('midia self-check OK')
 } catch (e) {
   console.error(e)

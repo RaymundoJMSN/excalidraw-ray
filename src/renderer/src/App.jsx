@@ -5,7 +5,7 @@ import { ray, isWeb, sceneMeta, LS } from './storage'
 import { IconNew, IconProjects, IconFolderOpen, IconShare, IconCloud } from './icons'
 import { instalarTraducoes } from './i18n'
 import { instalarMenuDados } from './dados'
-import { ehMidia, inserirMidia, renderMidia } from './midia'
+import { ehMidia, inserirMidia, renderMidia, semBorda } from './midia'
 import ProjectsPanel from './ProjectsPanel'
 import ShareDialog from './ShareDialog'
 import Login from './Login'
@@ -92,6 +92,7 @@ export default function App() {
     let data = null
     try {
       data = JSON.parse(raw)
+      data.elements = semBorda(data.elements) // mídia de antes da 1.8.1 tinha traço (borda clara no escuro) e o seletor não tem "transparente"
       data.appState = { ...data.appState, theme: LS.rayTheme ?? data.appState?.theme ?? 'dark' }
       // vista (scroll/zoom) não vai pro arquivo (serializeAsJSON descarta); fica no LS por projeto
       const v = JSON.parse(LS['rayView:' + id] ?? 'null')

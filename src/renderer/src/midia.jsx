@@ -11,6 +11,7 @@ const AUDIO = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/i
 export const ehMidia = (f) => /^(video|audio)\//.test(f.type) || VIDEO.test(f.name) || AUDIO.test(f.name)
 const ehAudio = (f) => f.type.startsWith('audio/') || AUDIO.test(f.name)
 export const tipoMidia = (link) => (AUDIO.test(link) ? 'audio' : VIDEO.test(link) ? 'video' : null)
+export const semBorda = (els) => (els ?? []).map((e) => (e.type === 'embeddable' && tipoMidia(e.link ?? '') && e.strokeColor !== 'transparent' ? { ...e, strokeColor: 'transparent' } : e))
 
 async function medir(f) { // vídeo: proporção real cabendo em 480 de largura; áudio: só a barra de controles
   if (ehAudio(f)) return { w: 320, h: 64 } // barra de 28 px embaixo + corpo pra arrastar
