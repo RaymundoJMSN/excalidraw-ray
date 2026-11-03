@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, utimes } from 'node:fs/promises'
 import { readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -20,9 +20,20 @@ assert.equal(scene.type, 'excalidraw', 'cena vazia válida')
 const edited = JSON.stringify({ ...scene, elements: [{ type: 'rectangle', id: 'r1' }] })
 await store.save(id, edited)
 assert.equal(store.load(id), edited, 'round-trip')
+const bak = path.join(dir, 'projects', id + '.excalidraw.bak')
+assert.ok(existsSync(bak), '.bak criado no 1º save')
+await store.save(id, JSON.stringify({ ...scene, elements: [{ type: 'rectangle', id: 'r1' }, { type: 'rectangle', id: 'r2' }] }))
+assert.equal(JSON.parse(readFileSync(bak, 'utf8')).elements.length, 0, '.bak novo demais não é refeito a cada save')
+const velho = new Date(Date.now() - 11 * 60 * 1000); await utimes(bak, velho, velho)
 await store.save(id, JSON.stringify({ ...scene, elements: [] }))
-assert.ok(existsSync(path.join(dir, 'projects', id + '.excalidraw.bak')), '.bak criado no 2º save')
-assert.equal(JSON.parse(readFileSync(path.join(dir, 'projects', id + '.excalidraw.bak'), 'utf8')).elements.length, 1, '.bak guarda versão anterior')
+assert.ok(existsSync(bak), '.bak existe')
+assert.equal(JSON.parse(readFileSync(bak, 'utf8')).elements.length, 2, '.bak com mais de 10 min é refeito com a versão anterior')
+await store.idle()
+// .tmp abandonado (gravação cortada) some no init; recente fica
+const tmpVelho = path.join(dir, 'projects', 'x.excalidraw.abc.tmp'), tmpNovo = path.join(dir, 'projects', 'y.excalidraw.def.tmp')
+await writeFile(tmpVelho, '{'); await utimes(tmpVelho, velho, velho); await writeFile(tmpNovo, '{')
+store.init({ dir, trash: (f) => rm(f) })
+assert.ok(!existsSync(tmpVelho) && existsSync(tmpNovo), 'init limpa só .tmp velho')
 
 await assert.rejects(async () => store.save(id, 'não é json'), 'json inválido rejeita')
 assert.ok(store.load(id).length > 0, 'json inválido não corrompe')

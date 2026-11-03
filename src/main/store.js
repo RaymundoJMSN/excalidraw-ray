@@ -12,7 +12,12 @@ export function init({ dir, trash }) {
   STATE_FILE = path.join(dir, 'state.json')
   trashFn = trash
   fs.mkdirSync(PROJ, { recursive: true })
+  for (const n of fs.readdirSync(PROJ)) { // .tmp de gravação cortada (app fechado no meio de um save de 100 MB no HD)
+    const f = path.join(PROJ, n)
+    if (n.endsWith('.tmp') && Date.now() - fs.statSync(f).mtimeMs > 60000) { try { fs.unlinkSync(f) } catch {} }
+  }
 }
+const BAK_MS = 10 * 60 * 1000 // .bak é rede de segurança, não histórico: copiar 100 MB no HD a cada save travava
 
 function readState() {
   try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')) } catch { return { last: null, projects: {} } }
@@ -65,9 +70,13 @@ export function save(id, json) {
   return next
 }
 
+export const idle = () => Promise.all([...queues.values()]) // quem fecha o app espera as gravações em curso
+
 async function doSave(id, json) {
   const f = sceneFile(id)
-  if (fs.existsSync(f)) await fsp.copyFile(f, f + '.bak')
+  let bakIdade = Infinity
+  try { bakIdade = Date.now() - fs.statSync(f + '.bak').mtimeMs } catch {}
+  if (fs.existsSync(f) && bakIdade > BAK_MS) await fsp.copyFile(f, f + '.bak')
   const tmp = f + '.' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '.tmp'
   await fsp.writeFile(tmp, json)
   await fsp.rename(tmp, f) // escrita atômica

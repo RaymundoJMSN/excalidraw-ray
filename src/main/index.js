@@ -33,7 +33,7 @@ function createWindow() {
   win.once('ready-to-show', () => { if (!teste) win.show() })
   win.on('close', (e) => {
     try { fs.writeFileSync(winStateFile(), JSON.stringify({ ...win.getNormalBounds(), maximized: win.isMaximized() })) } catch {}
-    if (!flushed) { // dá 1.5s pro renderer salvar o autosave pendente
+    if (!flushed) { // dá até 20 s pro renderer salvar o autosave pendente (cena de 100 MB no HD leva segundos)
       e.preventDefault()
       win.webContents.send('flush')
       let closing = false
@@ -46,7 +46,7 @@ function createWindow() {
         const fim = () => { if (!flushed) { flushed = true; win.close() } }
         Promise.race([sync.syncNow(), new Promise((r) => setTimeout(r, 4000))]).finally(fim)
       }
-      const t = setTimeout(done, 1500)
+      const t = setTimeout(done, 20000)
       ipcMain.once('flushed', done)
     }
   })
@@ -174,4 +174,4 @@ app.whenReady().then(() => {
   mainWin.webContents.session.on('will-download', (e, item) => { if (item.getURL().startsWith('ray-media://')) e.preventDefault() })
   checkUpdate(mainWin)
 })
-app.on('window-all-closed', () => app.quit())
+app.on('window-all-closed', () => store.idle().then(() => app.quit())) // gravação em curso termina antes de sair (ficavam .tmp pela metade)

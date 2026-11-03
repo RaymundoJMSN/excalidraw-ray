@@ -141,6 +141,21 @@ try {
     return { players: document.querySelectorAll('.ray-player').length, iframes: document.querySelectorAll('.excalidraw__embeddable-container iframe').length }
   })()`)
   assert.deepEqual(estranho, { players: 3, iframes: 0 }, 'link nosso com extensão estranha vira player, nunca iframe')
+  // jsonDaCena (imagens serializadas uma vez e reaproveitadas) tem que dar o MESMO JSON que o serializeAsJSON do pacote
+  const igual = await js(`(async () => {
+    const api = window.__rayTest.api, { jsonDaCena, serializeAsJSON } = window.__rayTest
+    const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    api.addFiles([{ id: 'img1', dataURL: png, mimeType: 'image/png', created: 1 }, { id: 'orfao', dataURL: png, mimeType: 'image/png', created: 1 }])
+    const base = api.getSceneElements().find((e) => e.type === 'embeddable')
+    const img = { ...base, id: 'imagem1', type: 'image', link: null, fileId: 'img1', status: 'saved', scale: [1, 1], crop: null, x: 900, y: 0, width: 50, height: 50 }
+    api.updateScene({ elements: [...api.getSceneElements(), img] })
+    await new Promise((r) => setTimeout(r, 300))
+    const a = jsonDaCena(api.getSceneElements(), api.getAppState(), api.getFiles()), b = serializeAsJSON(api.getSceneElements(), api.getAppState(), api.getFiles(), 'local')
+    const pa = JSON.parse(a), pb = JSON.parse(b)
+    const c = jsonDaCena(api.getSceneElements(), api.getAppState(), api.getFiles()) // 2ª vez: vem do cache
+    return { mesmo: JSON.stringify(pa) === JSON.stringify(pb), imagens: Object.keys(pa.files), cache: c === a }
+  })()`)
+  assert.deepEqual(igual, { mesmo: true, imagens: ['img1'], cache: true }, 'jsonDaCena = serializeAsJSON (só imagem em uso, órfã fora) e o cache devolve igual')
   console.log('midia self-check OK')
 } catch (e) {
   console.error(e)

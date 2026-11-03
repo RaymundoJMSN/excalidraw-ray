@@ -11,7 +11,24 @@ import ShareDialog from './ShareDialog'
 import Login from './Login'
 import SyncDialog from './SyncDialog'
 
-const THUMB_MS = 10000 // regenera thumbnail no máximo a cada 10s
+const THUMB_MS = 60000 // regenera thumbnail no máximo a cada 60s (exportToBlob redesenha a cena inteira)
+const SAVE_MS = 1000, SAVE_MAX_MS = 15000 // salva 1 s depois da ÚLTIMA mudança, mas nunca segura mais que 15 s
+
+// Cena com imagens é quase só base64 (medido: 112 MB num projeto do Ray). serializeAsJSON refaz essa string
+// (indentada!) a cada save; aqui as imagens em uso são serializadas uma vez e reaproveitadas até mudarem.
+let filesCache = { files: null, chave: '', json: '{}' }
+function jsonDaCena(els, st, files) {
+  const usados = [...new Set(els.filter((e) => e.type === 'image' && !e.isDeleted && e.fileId).map((e) => e.fileId))].sort()
+  const chave = usados.join(',')
+  if (filesCache.files !== files || filesCache.chave !== chave) {
+    const f = {}
+    for (const id of usados) if (files?.[id]) f[id] = files[id]
+    filesCache = { files, chave, json: JSON.stringify(f) }
+  }
+  const semImagens = serializeAsJSON(els, st, {}, 'local')
+  const i = semImagens.lastIndexOf('"files": {}')
+  return i < 0 ? serializeAsJSON(els, st, files, 'local') : semImagens.slice(0, i) + '"files": ' + filesCache.json + semImagens.slice(i + '"files": {}'.length)
+}
 const POLL_MS = 15000 // web: confere se a cena mudou em outro aparelho
 
 // muda só quando o desenho muda — scroll/seleção não disparam save (e cena recém-baixada não volta pra nuvem)
@@ -34,6 +51,7 @@ export default function App() {
   const idRef = useRef(null)
   const apiRef = useRef(null)
   const lastThumb = useRef(0)
+  const primeiroPendente = useRef(0)
   const lastView = useRef('')
   const lastSig = useRef(null)
   const absorbUntil = useRef(0) // onChange logo após carregar/aplicar cena remota só registra a assinatura
@@ -62,8 +80,9 @@ export default function App() {
     const snap = pending.current
     const id = idRef.current
     pending.current = null
+    primeiroPendente.current = 0
     if (Date.now() - lastThumb.current > THUMB_MS) { lastThumb.current = Date.now(); makeThumb(id, ...snap) }
-    return ray.save(id, serializeAsJSON(snap[0], snap[1], snap[2], 'local')).catch(() => {
+    return ray.save(id, jsonDaCena(snap[0], snap[1], snap[2])).catch(() => {
       if (!pending.current) pending.current = snap // não perde: retém e re-tenta
       if (!timer.current) timer.current = setTimeout(() => { timer.current = null; flush() }, 3000)
       apiRef.current?.setToast({ message: 'Falha ao salvar — tentando de novo…', closable: true, duration: 2500 })
@@ -201,7 +220,9 @@ export default function App() {
     lastSig.current = s
     if (Date.now() < absorbUntil.current) { absorbUntil.current = 0; return } // só o 1º onChange
     pending.current = [els, st, files]
-    if (!timer.current) timer.current = setTimeout(() => { timer.current = null; flush() }, 800)
+    if (!primeiroPendente.current) primeiroPendente.current = Date.now()
+    if (timer.current) clearTimeout(timer.current) // debounce no fim: desenhar por 10 s = 1 save, não 12
+    timer.current = setTimeout(() => { timer.current = null; flush() }, Date.now() - primeiroPendente.current >= SAVE_MAX_MS ? 0 : SAVE_MS)
   }, [])
 
   const newProject = async () => {
@@ -247,7 +268,7 @@ export default function App() {
         viewModeEnabled={readOnly || undefined}
         validateEmbeddable // qualquer URL pode ser embedada (a whitelist do pacote barrava quase tudo)
         renderEmbeddable={renderMidia} // link de vídeo/áudio vira <video>/<audio>; o resto segue no iframe
-        excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray, inserirMidia } }}
+        excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray, inserirMidia, jsonDaCena, serializeAsJSON } }}
         UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         renderTopRightUI={() => updateVersion && (
           <button className={'ray-update' + (atualizando ? ' baixando' : '')} disabled={atualizando}
