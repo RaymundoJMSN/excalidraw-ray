@@ -70,11 +70,16 @@ try {
     const corpo = document.elementFromPoint(r.left + r.width / 2, r.top + 10)?.tagName
     const botao = meio(pv.querySelector('button'))
     const grip = meio(document.querySelector('.ray-player.audio .grip')) // áudio é só barra: o ⠿ é o pegador (passa pro canvas)
+    // volume: mexer no slider muda o volume do <audio> (input controlado pelo React: setter nativo + evento input)
+    const sv = document.querySelector('.ray-player.audio input.vol'), au = document.querySelector('.ray-player.audio audio')
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(sv, '0.3'); sv.dispatchEvent(new Event('input', { bubbles: true }))
+    await new Promise((r) => setTimeout(r, 100))
+    const volume = au.volume
     // popup de link do pacote (markup real: div.excalidraw-hyperlinkContainer > a.excalidraw-hyperlinkContainer-link[href]):
     // o pacote só o abre num clique de mouse de verdade, então a regra CSS é provada com o mesmo markup injetado
     const fakePopup = (href) => { const d = document.createElement('div'); d.className = 'excalidraw-hyperlinkContainer'; d.innerHTML = '<a class="excalidraw-hyperlinkContainer-link" href="' + href + '">x</a>'; document.body.appendChild(d); return getComputedStyle(d).display }
     return {
-      larguras, fonteVideo, corpo, botao, grip, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
+      larguras, fonteVideo, corpo, botao, grip, volume, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
       els: embeds().map((e) => ({ link: e.link, w: e.width, h: e.height, traco: e.strokeColor, cantos: e.roundness })),
       temVideo: !!video, temAudio: !!document.querySelector('.excalidraw__embeddable-container audio'),
       ready: video?.readyState ?? 0, duracao: video?.duration ?? 0,
@@ -96,6 +101,7 @@ try {
   assert.equal(out.corpo, 'CANVAS', 'clique no corpo do vídeo vai pro canvas (seleciona/arrasta como foto)')
   assert.equal(out.botao, 'BUTTON', 'barra do player recebe o clique sem ativar nada')
   assert.ok(out.grip.startsWith('CANVAS'), 'pegador ⠿ do áudio deixa o clique passar pro canvas (arrastar): ' + out.grip)
+  assert.ok(Math.abs(out.volume - 0.3) < 0.01, 'slider de volume muda o volume do áudio: ' + out.volume)
   assert.deepEqual([out.popupMidia, out.popupWeb, out.popupSite], ['none', 'none', 'flex'], 'popup de link escondido só pra mídia (desktop e web); o do pacote é flex')
   assert.ok(out.ready >= 1 && out.duracao > 7.5, 'vídeo carregou metadados pelo ray-media:// (2º Range aceito)')
   assert.equal(mp4?.status, 206, 'o <video> pede Range e o esquema responde 206 (seek)')

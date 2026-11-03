@@ -52,7 +52,7 @@ export async function inserirMidia(api, arquivos, ponto, sceneId) {
 // "ativar" o embed antes de qualquer clique. Aqui o corpo passa o clique pro canvas (midia.css) e a barra funciona sempre.
 function Player({ src, audio, fonte }) {
   const ref = useRef(null)
-  const [t, setT] = useState(0), [dur, setDur] = useState(0), [tocando, setTocando] = useState(false), [mudo, setMudo] = useState(false)
+  const [t, setT] = useState(0), [dur, setDur] = useState(0), [tocando, setTocando] = useState(false), [mudo, setMudo] = useState(false), [vol, setVol] = useState(1)
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
   const Tag = audio ? 'audio' : 'video'
   return (
@@ -65,7 +65,9 @@ function Player({ src, audio, fonte }) {
         <button title={tocando ? 'Pausar' : 'Tocar'} onClick={() => (tocando ? ref.current.pause() : ref.current.play())}>{tocando ? '❚❚' : '▶'}</button>
         <input type="range" min={0} max={dur || 0} step={0.1} value={t} onChange={(e) => { ref.current.currentTime = +e.target.value; setT(+e.target.value) }} />
         <span>{fmt(t)}{dur ? ' / ' + fmt(dur) : ''}</span>
-        <button title={mudo ? 'Som' : 'Mudo'} onClick={() => { ref.current.muted = !mudo; setMudo(!mudo) }}>{mudo ? '🔇' : '🔊'}</button>
+        <button title={mudo ? 'Som' : 'Mudo'} onClick={() => { ref.current.muted = !mudo; setMudo(!mudo) }}>{mudo || vol === 0 ? '🔇' : vol < 0.5 ? '🔉' : '🔊'}</button>
+        <input className="vol" type="range" min={0} max={1} step={0.05} value={vol} title="Volume"
+          onChange={(e) => { const v = +e.target.value; ref.current.volume = v; setVol(v); if (mudo && v > 0) { ref.current.muted = false; setMudo(false) } }} />
       </div>
     </div>
   )
