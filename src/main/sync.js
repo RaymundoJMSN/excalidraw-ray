@@ -231,6 +231,10 @@ async function pullThumb(lid, rid) {
 }
 
 async function cycle() {
+  if (!S.midiaNaNuvem) { // uma vez, ao chegar na 1.9.1: cena que subiu antes está na nuvem com ray-media:// e sem os arquivos
+    for (const [lid, e] of Object.entries(S.map)) { const j = store.load(lid); if (j && midiasDe(j).length) e.dirty = true }
+    S.midiaNaNuvem = true; persist()
+  }
   for (const rid of [...S.tomb]) {
     const r = await api(`/api/scene/${rid}`, { method: 'DELETE' })
     if (r.ok || r.status === 404) { S.tomb = S.tomb.filter((x) => x !== rid); persist() }
