@@ -23,3 +23,6 @@
 .ray-info .ray-date { padding-left: 4px; }
 .ray-update { background: #2f9e44; border: 0; color: #fff; font-family: 'Assistant', system-ui, sans-serif; font-size: 13px; font-weight: 600; padding: 0 12px; border-radius: 8px; cursor: pointer; height: var(--lg-button-size, 36px); }
 .ray-update:hover { background: #37b24d; }
+.ray-update.baixando { cursor: progress; opacity: .85; }
+.ray-update .gira { display: inline-block; animation: ray-gira 1s linear infinite; }
+@keyframes ray-gira { to { transform: rotate(360deg); } }

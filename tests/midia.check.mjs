@@ -69,7 +69,7 @@ try {
     const fakePopup = (href) => { const d = document.createElement('div'); d.className = 'excalidraw-hyperlinkContainer'; d.innerHTML = '<a class="excalidraw-hyperlinkContainer-link" href="' + href + '">x</a>'; document.body.appendChild(d); return getComputedStyle(d).display }
     return {
       corpo, botao, popupMidia: fakePopup('ray-media://x.mp4'), popupWeb: fakePopup('/api/media/x.mp4'), popupSite: fakePopup('https://exemplo.com'),
-      els: embeds().map((e) => ({ link: e.link, w: e.width, h: e.height })),
+      els: embeds().map((e) => ({ link: e.link, w: e.width, h: e.height, traco: e.strokeColor, cantos: e.roundness })),
       temVideo: !!video, temAudio: !!document.querySelector('.excalidraw__embeddable-container audio'),
       ready: video?.readyState ?? 0, duracao: video?.duration ?? 0,
     }
@@ -81,6 +81,7 @@ try {
   const video = out.els.find((e) => e.link.endsWith('.mp4')), audio = out.els.find((e) => e.link.endsWith('.mp3')) // o áudio entra antes (não mede metadado)
   assert.match(video?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp4$/)
   assert.deepEqual([video.w, video.h], [480, 360], 'tamanho segue a proporção 4:3 do fixture')
+  assert.deepEqual([video.traco, video.cantos], ['transparent', null], 'sem borda nem cantos arredondados (como foto)')
   assert.match(audio?.link ?? '', /^ray-media:\/\/[a-z0-9]+\.mp3$/)
   assert.deepEqual([audio.w, audio.h], [320, 64], 'áudio = barra + corpo pra arrastar')
   assert.ok(out.temVideo && out.temAudio, 'renderEmbeddable desenhou <video> e <audio>')

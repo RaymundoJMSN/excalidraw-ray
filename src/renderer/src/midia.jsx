@@ -34,7 +34,8 @@ export async function inserirMidia(api, arquivos, ponto, sceneId) {
     try { link = await ray.saveMedia(f, sceneId) } catch (e) {
       console.error(e); api.setToast({ message: `Não consegui guardar ${f.name}`, closable: true }); continue
     }
-    novos.push(...restoreElements([{ type: 'embeddable', x: x - w / 2, y: y - h / 2, width: w, height: h, link }], null))
+    // como foto: sem o traço (saía uma borda branca no tema escuro) e sem cantos arredondados
+    novos.push(...restoreElements([{ type: 'embeddable', x: x - w / 2, y: y - h / 2, width: w, height: h, link, strokeColor: 'transparent', roundness: null }], null))
     y += h + 16
   }
   if (!novos.length) return

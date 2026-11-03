@@ -28,6 +28,7 @@ export default function App() {
   const [showShare, setShowShare] = useState(false)
   const [showSync, setShowSync] = useState(false)
   const [updateVersion, setUpdateVersion] = useState(null)
+  const [atualizando, setAtualizando] = useState(false)
   const pending = useRef(null) // últimos (elements, appState, files) ainda não salvos
   const timer = useRef(null)
   const idRef = useRef(null)
@@ -220,8 +221,10 @@ export default function App() {
   }
 
   const instalarUpdate = async () => {
+    setAtualizando(true) // o download (~115 MB) é mudo: sem isto parece que o clique não foi
     await flush()
-    await window.ray.runUpdate()
+    const ok = await window.ray.runUpdate().catch(() => false)
+    if (!ok) { setAtualizando(false); apiRef.current?.setToast({ message: 'Não consegui baixar a atualização. Tenta de novo daqui a pouco.', closable: true }) }
   }
 
   if (isWeb && !user && !route) return <Login onLogin={setUser} />
@@ -246,8 +249,9 @@ export default function App() {
         excalidrawAPI={(a) => { apiRef.current = a; setExcaliApi(a); if (import.meta.env.DEV) window.__rayTest = { api: a, convert: convertToExcalidrawElements, exportToBlob, makeThumb, ray, inserirMidia } }}
         UIOptions={{ canvasActions: { export: { saveFileToDisk: true } } }}
         renderTopRightUI={() => updateVersion && (
-          <button className="ray-update" title={`Atualizar para a versão ${updateVersion} (baixa e reinstala sozinho)`}
-            onClick={instalarUpdate}>⬇ Atualizar v{updateVersion}</button>
+          <button className={'ray-update' + (atualizando ? ' baixando' : '')} disabled={atualizando}
+            title={atualizando ? 'Baixando o instalador… o app fecha e reabre sozinho' : `Atualizar para a versão ${updateVersion} (baixa e reinstala sozinho)`}
+            onClick={instalarUpdate}>{atualizando ? <><span className="gira">⟳</span> Baixando…</> : `⬇ Atualizar v${updateVersion}`}</button>
         )}>
         {readOnly ? (
           <MainMenu>
